@@ -23,6 +23,7 @@ let lastTextElement = null;
 let isScrolling = false;
 let isSpeaking = false;
 let speechSynthesis = window.speechSynthesis;
+let calibrationData = null; // Pour stocker les données de calibration
 
 // Load settings from storage
 function loadSettings() {
@@ -31,6 +32,7 @@ function loadSettings() {
       settings = items;
       isActive = settings.isActive;
       isCalibrated = settings.calibrated;
+      calibrationData = settings.calibrationData;
       resolve(settings);
     });
   });
@@ -545,6 +547,41 @@ async function initialize() {
       loadSettings().then(() => {
         sendResponse({ success: true });
       });
+      return true; // Required for asynchronous sendResponse
+    }
+
+    // Nouveau gestionnaire pour démarrer le suivi des yeux après la calibration
+    if (request.action === 'startEyeTracking') {
+      // Mettre à jour les paramètres avec les nouvelles données de calibration
+      if (request.calibrationData) {
+        calibrationData = request.calibrationData;
+        isCalibrated = true;
+      }
+      
+      // Mettre à jour les paramètres si fournis
+      if (request.settings) {
+        settings = { ...settings, ...request.settings };
+      }
+      
+      isActive = true;
+      
+      // S'assurer que l'interface est initialisée
+      if (!cursor) {
+        initializeUI();
+      }
+      
+      // Démarrer ou continuer le suivi si la webcam est déjà active
+      if (!webcamStream) {
+        initializeTracking().then(() => {
+          sendResponse({ success: true });
+        }).catch(error => {
+          console.error('Erreur lors du démarrage du suivi des yeux:', error);
+          sendResponse({ success: false, error: error.message });
+        });
+      } else {
+        sendResponse({ success: true });
+      }
+      
       return true; // Required for asynchronous sendResponse
     }
   });

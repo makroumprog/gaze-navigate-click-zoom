@@ -1,4 +1,3 @@
-
 document.addEventListener('DOMContentLoaded', function() {
   // Elements
   const calibrateBtn = document.getElementById('calibrate-btn');
@@ -179,6 +178,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let dwellProgress = 0;
   let dwellInterval = null;
   let calibrationSuccess = false;
+  let keepCameraActive = true; // Nouvelle variable pour garder la caméra active
   
   function initializeCalibration() {
     webcam = document.getElementById('webcam');
@@ -396,10 +396,13 @@ document.addEventListener('DOMContentLoaded', function() {
       
       calibrationArea.appendChild(successAnimation);
       
-      // Close modal after a short delay
+      // Close modal after a short delay and activate eye tracking
       setTimeout(() => {
         modal.style.display = 'none';
-        stopCalibration();
+        
+        // Au lieu d'arrêter la calibration, nous notifions le content script
+        // de démarrer la navigation par les yeux avec la caméra déjà active
+        activateEyeTracking();
         
         // Reset for next time
         startCalibrationBtn.style.display = 'block';
@@ -419,8 +422,8 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function stopCalibration() {
-    // Stop webcam if it's running
-    if (webcam && webcam.srcObject) {
+    // Stop webcam if it's running and we don't need to keep it active
+    if (webcam && webcam.srcObject && !keepCameraActive) {
       webcam.srcObject.getTracks().forEach(track => track.stop());
       webcam.srcObject = null;
     }
@@ -468,5 +471,36 @@ document.addEventListener('DOMContentLoaded', function() {
       calibrationArea.appendChild(targetEl);
     }
   }
-});
 
+  // Nouvelle fonction pour activer la navigation par les yeux
+  function activateEyeTracking() {
+    // Notifier le content script pour démarrer le suivi des yeux
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'startEyeTracking',
+          calibrationData: currentCalibrationData,
+          settings: {
+            gazeCursor: gazeCursor.checked,
+            blinkClick: blinkClick.checked,
+            autoZoom: autoZoom.checked,
+            textSpeech: textSpeech.checked,
+            edgeNavigation: edgeNavigation.checked,
+            autoScroll: autoScroll.checked,
+            gazeSensitivity: parseInt(gazeSensitivity.value),
+            blinkDelay: parseInt(blinkDelay.value),
+            zoomDelay: parseInt(zoomDelay.value),
+            speechRate: parseFloat(speechRate.value),
+            edgeSize: parseInt(edgeSize.value),
+            scrollSpeed: parseInt(scrollSpeed.value)
+          }
+        });
+      }
+    });
+
+    // Mettre à jour l'interface pour indiquer que le suivi des yeux est actif
+    updateStatusUI(true);
+    isActive = true;
+    saveSettings();
+  }
+});
