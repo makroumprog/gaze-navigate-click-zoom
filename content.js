@@ -1,4 +1,3 @@
-
 // GazeTech Content Script
 // This script is injected into web pages to enable eye tracking control
 
@@ -16,7 +15,7 @@ let video = null;
 let canvas = null;
 let cursor = null;
 let lastGazePoint = { x: 0, y: 0 };
-let lastEyeState = { isBlinking: false };
+let lastEyeState = { isBlinking: false, lastBlinkTime: Date.now() };
 let lastGazeTime = Date.now();
 let lastZoomElement = null;
 let lastTextElement = null;
@@ -24,6 +23,7 @@ let isScrolling = false;
 let isSpeaking = false;
 let speechSynthesis = window.speechSynthesis;
 let calibrationData = null; // Pour stocker les données de calibration
+let eyeMovementSensitivity = 3; // Sensibilité des mouvements oculaires (ajustable)
 
 // Load settings from storage
 function loadSettings() {
@@ -33,6 +33,12 @@ function loadSettings() {
       isActive = settings.isActive;
       isCalibrated = settings.calibrated;
       calibrationData = settings.calibrationData;
+      
+      // Appliquer la sensibilité des mouvements oculaires depuis les paramètres
+      if (settings.gazeSensitivity) {
+        eyeMovementSensitivity = settings.gazeSensitivity;
+      }
+      
       resolve(settings);
     });
   });
@@ -103,6 +109,12 @@ async function initializeTracking() {
     video.srcObject = webcamStream;
     await video.play();
     
+    // Notifier le background script que la caméra est active
+    chrome.runtime.sendMessage({
+      action: 'cameraStatusUpdate',
+      isActive: true
+    });
+    
     // Load face mesh model if available
     if (window.facemesh) {
       faceMesh = await facemesh.load({
@@ -142,6 +154,9 @@ async function trackFace() {
       
       // Process eye data
       const eyeData = processEyeData(face);
+      
+      // Debug - afficher la position du regard dans la console
+      console.log('Position du regard:', eyeData.gazePoint.x, eyeData.gazePoint.y);
       
       // Update cursor position based on gaze
       if (settings.gazeCursor) {
@@ -203,30 +218,35 @@ function processEyeData(face) {
   const nose = landmarks[1];
   
   // Map nose position to screen coordinates with sensitivity adjustment
-  const sensitivity = settings.gazeSensitivity / 5; // Range 0.2 - 2
+  // Augmenter l'impact de la sensibilité
+  const sensitivity = eyeMovementSensitivity * 0.5; // Range 0.5 - 5
   
   // Calculate relative position in video frame
   const relativeX = nose[0] / video.width;
   const relativeY = nose[1] / video.height;
   
   // Apply non-linear mapping for more precise control in center area
-  const mappedX = Math.pow(relativeX - 0.5, 3) * sensitivity * 10 + 0.5;
-  const mappedY = Math.pow(relativeY - 0.5, 3) * sensitivity * 10 + 0.5;
+  // Utilisation d'un mappage plus sensible pour détecter de plus petits mouvements
+  const mappedX = Math.pow(relativeX - 0.5, sensitivity > 3 ? 1 : 3) * sensitivity * 5 + 0.5;
+  const mappedY = Math.pow(relativeY - 0.5, sensitivity > 3 ? 1 : 3) * sensitivity * 5 + 0.5;
   
   // Map to screen coordinates with some smoothing
   const gazeX = window.innerWidth * mappedX;
   const gazeY = window.innerHeight * mappedY;
   
-  // Apply simple smoothing with previous position (would be more sophisticated in real implementation)
-  const smoothedX = lastGazePoint.x * 0.8 + gazeX * 0.2;
-  const smoothedY = lastGazePoint.y * 0.8 + gazeY * 0.2;
+  // Apply smoothing with previous position (ajustement de la fluidité)
+  // Moins de lissage pour des mouvements plus réactifs
+  const smoothFactor = 0.7; // Réduit par rapport à 0.8 précédent
+  const smoothedX = lastGazePoint.x * smoothFactor + gazeX * (1 - smoothFactor);
+  const smoothedY = lastGazePoint.y * smoothFactor + gazeY * (1 - smoothFactor);
   
   // Detect blinking (simplified for demo)
   // In a real implementation, we would measure eye aspect ratio using landmarks
   
   // Simulate blink detection 
   // (in real implementation, we would use eye landmarks to calculate eye openness)
-  const isBlinking = Math.random() < 0.01; // Just random for demo
+  // Augmenter légèrement la fréquence des clignements pour le test
+  const isBlinking = Math.random() < 0.02; // A bit higher than 0.01 for testing
   
   const gazePoint = { x: smoothedX, y: smoothedY };
   lastGazePoint = gazePoint;
@@ -506,6 +526,12 @@ function startAutoScroll() {
 function cleanup() {
   if (webcamStream) {
     webcamStream.getTracks().forEach(track => track.stop());
+    
+    // Notifier le background script que la caméra est inactive
+    chrome.runtime.sendMessage({
+      action: 'cameraStatusUpdate',
+      isActive: false
+    });
   }
   
   if (cursor) {
@@ -518,6 +544,14 @@ function cleanup() {
   
   if (canvas) {
     document.body.removeChild(canvas);
+  }
+}
+
+// Fonction pour restaurer la caméra lors du changement d'onglet
+async function restoreCamera() {
+  if (isActive && !webcamStream) {
+    console.log('GazeTech: Restauration de la caméra après changement d\'onglet');
+    await initializeTracking();
   }
 }
 
@@ -584,6 +618,17 @@ async function initialize() {
       
       return true; // Required for asynchronous sendResponse
     }
+    
+    // Nouveau gestionnaire pour restaurer la caméra après changement d'onglet
+    if (request.action === 'restoreCamera' && request.shouldRestore) {
+      restoreCamera().then(() => {
+        sendResponse({ success: true });
+      }).catch(error => {
+        console.error('GazeTech: Erreur lors de la restauration de la caméra:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+      return true; // Required for asynchronous sendResponse
+    }
   });
 }
 
@@ -594,3 +639,11 @@ initialize().catch(error => {
 
 // Clean up when page is unloaded
 window.addEventListener('beforeunload', cleanup);
+
+// Détecter quand la page devient visible/invisible pour gérer la caméra
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && isActive) {
+    // La page est à nouveau visible, restaurer la caméra si nécessaire
+    restoreCamera();
+  }
+});

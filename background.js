@@ -31,6 +31,10 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
+// Ajouter un état global pour suivre si la caméra est active
+let cameraActive = false;
+let activeTabId = null;
+
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getSettings') {
@@ -38,6 +42,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse(settings);
     });
     return true; // Required for asynchronous sendResponse
+  }
+
+  // Nouveau gestionnaire pour suivre l'état de la caméra
+  if (request.action === 'cameraStatusUpdate') {
+    cameraActive = request.isActive;
+    if (sender.tab) {
+      activeTabId = sender.tab.id;
+    }
+    sendResponse({ success: true });
+    return true;
+  }
+});
+
+// Suivre les changements d'onglets
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  // Si la caméra était active et qu'on change d'onglet, notifier le nouvel onglet
+  if (cameraActive && activeTabId !== activeInfo.tabId) {
+    chrome.tabs.sendMessage(activeInfo.tabId, {
+      action: 'restoreCamera',
+      shouldRestore: true
+    }).catch(error => {
+      // L'erreur se produit souvent si l'onglet n'a pas encore le content script
+      console.log("Impossible de restaurer la caméra sur le nouvel onglet:", error);
+    });
+    activeTabId = activeInfo.tabId;
   }
 });
 
