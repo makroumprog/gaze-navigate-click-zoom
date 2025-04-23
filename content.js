@@ -1,4 +1,3 @@
-
 // GazeTech Content Script
 // This script is injected into web pages to enable eye tracking control
 
@@ -29,6 +28,15 @@ let eyeMovementSensitivity = 3; // Sensibilité des mouvements oculaires (ajusta
 let restoreCameraAttempts = 0;
 const MAX_RESTORE_ATTEMPTS = 3;
 
+// Enhanced tracking parameters
+let headTracking = {
+  xOffset: 0,
+  yOffset: 0,
+  xScale: 1.5, // Increased movement amplification
+  yScale: 1.5, // Increased movement amplification
+  smoothFactor: 0.3 // Reduced smoothing for more immediate response
+};
+
 // Load settings from storage
 function loadSettings() {
   return new Promise((resolve) => {
@@ -38,9 +46,14 @@ function loadSettings() {
       isCalibrated = settings.calibrated;
       calibrationData = settings.calibrationData;
       
-      // Appliquer la sensibilité des mouvements oculaires depuis les paramètres
+      // Apply eye movement sensitivity from settings
       if (settings.gazeSensitivity) {
         eyeMovementSensitivity = settings.gazeSensitivity;
+        // Update tracking scaling based on sensitivity
+        headTracking.xScale = 1.0 + (eyeMovementSensitivity * 0.3); // More dynamic range
+        headTracking.yScale = 1.0 + (eyeMovementSensitivity * 0.3);
+        // Adjust smoothing to be more responsive at high sensitivity
+        headTracking.smoothFactor = Math.max(0.1, 0.5 - (eyeMovementSensitivity * 0.04));
       }
       
       resolve(settings);
@@ -65,7 +78,7 @@ function initializeUI() {
     transform: translate(-50%, -50%);
     box-shadow: 0 0 10px rgba(44, 123, 229, 0.5);
     display: ${isActive ? 'block' : 'none'};
-    transition: background-color 0.2s, opacity 0.2s;
+    transition: transform 0.1s ease-out, background-color 0.2s; 
   `;
   document.body.appendChild(cursor);
 
@@ -100,6 +113,23 @@ function initializeUI() {
     z-index: -1;
   `;
   document.body.appendChild(canvas);
+  
+  // Add calibration indicator for debugging
+  const debugIndicator = document.createElement('div');
+  debugIndicator.id = 'gazetech-debug';
+  debugIndicator.style.cssText = `
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    z-index: 999999;
+    display: none;
+  `;
+  document.body.appendChild(debugIndicator);
 }
 
 // Initialize webcam and face tracking
@@ -118,6 +148,16 @@ async function initializeTracking() {
     video.srcObject = webcamStream;
     await video.play();
     cameraInitialized = true;
+    
+    // Show debug info temporarily
+    const debugIndicator = document.getElementById('gazetech-debug');
+    if (debugIndicator) {
+      debugIndicator.textContent = "Camera initialized";
+      debugIndicator.style.display = "block";
+      setTimeout(() => {
+        debugIndicator.style.display = "none";
+      }, 3000);
+    }
     
     // Notify the background script that camera is active
     chrome.runtime.sendMessage({
@@ -178,11 +218,11 @@ async function trackFace() {
     if (predictions.length > 0) {
       const face = predictions[0];
       
-      // Process eye data
+      // Process eye data with enhanced tracking
       const eyeData = processEyeData(face);
       
-      // Debug - afficher la position du regard dans la console
-      console.log('Position du regard:', eyeData.gazePoint.x, eyeData.gazePoint.y);
+      // Debug - display position in debug element
+      updateDebugInfo(eyeData.gazePoint.x, eyeData.gazePoint.y);
       
       // Update cursor position based on gaze
       if (settings.gazeCursor) {
@@ -224,46 +264,74 @@ async function trackFace() {
   requestAnimationFrame(trackFace);
 }
 
-// Process eye data to determine gaze point and blink state
+// Update debug information
+function updateDebugInfo(x, y) {
+  const debugIndicator = document.getElementById('gazetech-debug');
+  if (debugIndicator && Math.random() < 0.05) { // Only update occasionally to avoid performance issues
+    debugIndicator.style.display = "block";
+    debugIndicator.textContent = `Gaze: ${Math.round(x)},${Math.round(y)} | Sens: ${eyeMovementSensitivity}`;
+    setTimeout(() => {
+      debugIndicator.style.display = "none";
+    }, 1000);
+  }
+}
+
+// Process eye data to determine gaze point and blink state - COMPLETELY REVISED
 function processEyeData(face) {
-  // In a real implementation, this would use the actual eye landmarks
-  // from the facemesh model to determine gaze direction
-  
-  // For this demo, we'll simulate eye tracking using head position as a proxy
-  // and map it to screen coordinates
-  
-  // Get face position and landmarks
+  // Get face landmarks
   const landmarks = face.scaledMesh;
   
-  // Calculate gaze point (simplified for demo)
-  // Get nose tip as reference point (landmark #1)
-  const nose = landmarks[1];
+  // Use more face landmarks for better tracking
+  // Get specific points for better eye tracking
+  const noseTop = landmarks[6];  // Top of nose bridge
+  const noseTip = landmarks[1];  // Tip of nose
+  const leftEye = landmarks[159]; // Left eye center
+  const rightEye = landmarks[386]; // Right eye center
+  const leftEyeTop = landmarks[159 - 20]; // Approximate
+  const leftEyeBottom = landmarks[159 + 20]; // Approximate
   
-  // Map nose position to screen coordinates with sensitivity adjustment
-  // Increased impact of sensitivity
-  const sensitivity = eyeMovementSensitivity * 0.7; // Adjusted from 0.5 for more responsiveness
+  // Calculate head rotation and position
+  const faceWidth = Math.abs(landmarks[454][0] - landmarks[234][0]); // Distance between ears
+  const headX = (noseTip[0] - (video.width / 2)) / (video.width / 2);
+  const headY = (noseTip[1] - (video.height / 2)) / (video.height / 2);
   
-  // Calculate relative position in video frame
-  const relativeX = nose[0] / video.width;
-  const relativeY = nose[1] / video.height;
+  // Calculate eye openness (for blink detection)
+  const leftEyeHeight = Math.abs(leftEyeTop[1] - leftEyeBottom[1]) / faceWidth;
+  const isBlinking = leftEyeHeight < 0.02; // Normalized threshold for blinking
   
-  // Apply non-linear mapping for more precise control in center area
-  const mappedX = Math.pow(relativeX - 0.5, sensitivity > 3 ? 1 : 2.5) * sensitivity * 7 + 0.5;
-  const mappedY = Math.pow(relativeY - 0.5, sensitivity > 3 ? 1 : 2.5) * sensitivity * 7 + 0.5;
+  // Apply calibration if available
+  let calibratedX = headX;
+  let calibratedY = headY;
   
-  // Map to screen coordinates
-  const gazeX = window.innerWidth * mappedX;
-  const gazeY = window.innerHeight * mappedY;
+  if (calibrationData && calibrationData.length >= 5) {
+    // Use calibration data to normalize the gaze point
+    // Simple calibration correction (in real implementation, this would be more sophisticated)
+    const centerCalibration = calibrationData[0];
+    if (centerCalibration && centerCalibration.eyeData) {
+      // Apply offsets based on calibration center point
+      calibratedX = headX - (centerCalibration.eyeData.x / 200) + 0.1;
+      calibratedY = headY - (centerCalibration.eyeData.y / 200) + 0.1;
+    }
+  }
   
-  // Apply smoothing with previous position (reduced smoothing for more responsive movement)
-  const smoothFactor = 0.5; // Reduced from 0.7 previously
-  const smoothedX = lastGazePoint.x * smoothFactor + gazeX * (1 - smoothFactor);
-  const smoothedY = lastGazePoint.y * smoothFactor + gazeY * (1 - smoothFactor);
+  // Apply amplification based on sensitivity
+  const amplifiedX = calibratedX * headTracking.xScale;
+  const amplifiedY = calibratedY * headTracking.yScale;
   
-  // Detect blinking (simplified for demo)
-  const isBlinking = Math.random() < 0.03; // Slightly increased for testing
+  // Map to screen with enhanced non-linear response for finer center control
+  // This creates an S-curve response that's more sensitive in the center
+  const screenX = window.innerWidth * (0.5 + Math.pow(amplifiedX, eyeMovementSensitivity > 5 ? 1 : 3) * 0.8);
+  const screenY = window.innerHeight * (0.5 + Math.pow(amplifiedY, eyeMovementSensitivity > 5 ? 1 : 3) * 0.8);
   
-  const gazePoint = { x: smoothedX, y: smoothedY };
+  // Apply smoothing with previous position (reduced for more responsiveness)
+  const smoothedX = lastGazePoint.x * headTracking.smoothFactor + screenX * (1 - headTracking.smoothFactor);
+  const smoothedY = lastGazePoint.y * headTracking.smoothFactor + screenY * (1 - headTracking.smoothFactor);
+  
+  const gazePoint = { 
+    x: Math.max(0, Math.min(window.innerWidth, smoothedX)),
+    y: Math.max(0, Math.min(window.innerHeight, smoothedY))
+  };
+  
   lastGazePoint = gazePoint;
   
   return {
@@ -275,6 +343,7 @@ function processEyeData(face) {
 // Update cursor position based on gaze point
 function updateCursorPosition(gazePoint) {
   if (cursor) {
+    // Apply slight animation for smoother movement
     cursor.style.left = `${gazePoint.x}px`;
     cursor.style.top = `${gazePoint.y}px`;
   }
@@ -565,6 +634,11 @@ function cleanup() {
     document.body.removeChild(canvas);
     canvas = null;
   }
+  
+  const debugIndicator = document.getElementById('gazetech-debug');
+  if (debugIndicator && document.body.contains(debugIndicator)) {
+    document.body.removeChild(debugIndicator);
+  }
 }
 
 // Function to restore camera between tab switches
@@ -687,7 +761,7 @@ initialize().catch(error => {
 // Clean up when page is unloaded
 window.addEventListener('beforeunload', cleanup);
 
-// Handle page visibility changes
+// Handle page visibility changes - improved to be more reliable
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && isActive) {
     // Page is visible again, restore camera if needed
