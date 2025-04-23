@@ -1,0 +1,597 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paramètres avancés - GazeTech</title>
+  <style>
+    :root {
+      --primary: #2c7be5;
+      --secondary: #95aac9;
+      --success: #00d97e;
+      --danger: #e63757;
+      --warning: #f6c343;
+      --info: #39afd1;
+      --dark: #12263f;
+      --light: #f9fbfd;
+      --border-color: #edf2f9;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: var(--dark);
+      background-color: var(--light);
+      padding: 0;
+      margin: 0;
+    }
+    
+    header {
+      background-color: white;
+      padding: 24px;
+      box-shadow: 0 0.125rem 0.25rem rgba(18, 38, 63, 0.075);
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .logo-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    
+    .logo {
+      width: 60px;
+      height: 60px;
+      margin-right: 16px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px;
+      margin-bottom: 64px;
+    }
+    
+    .card {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03);
+      margin-bottom: 32px;
+      overflow: hidden;
+    }
+    
+    .card-header {
+      padding: 16px 24px;
+      background-color: rgba(44, 123, 229, 0.05);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .card-body {
+      padding: 24px;
+    }
+    
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 0;
+      color: var(--dark);
+    }
+    
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    
+    p {
+      margin-bottom: 16px;
+      color: #566a7f;
+    }
+    
+    .form-group {
+      margin-bottom: 24px;
+    }
+    
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    .form-control {
+      display: block;
+      width: 100%;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: var(--dark);
+      background-color: #fff;
+      background-clip: padding-box;
+      border: 1px solid var(--border-color);
+      border-radius: 0.25rem;
+      transition: border-color 0.15s ease-in-out;
+    }
+    
+    .form-control:focus {
+      border-color: var(--primary);
+      outline: 0;
+      box-shadow: 0 0 0 0.2rem rgba(44, 123, 229, 0.25);
+    }
+    
+    .form-text {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.875rem;
+      color: var(--secondary);
+    }
+    
+    .form-check {
+      display: block;
+      min-height: 1.5rem;
+      padding-left: 1.75rem;
+      margin-bottom: 0.5rem;
+      position: relative;
+    }
+    
+    .form-check-input {
+      position: absolute;
+      margin-top: 0.25rem;
+      margin-left: -1.75rem;
+    }
+    
+    .form-check-label {
+      margin-bottom: 0;
+    }
+    
+    .btn {
+      display: inline-block;
+      font-weight: 500;
+      text-align: center;
+      white-space: nowrap;
+      vertical-align: middle;
+      cursor: pointer;
+      border: 1px solid transparent;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      line-height: 1.5;
+      border-radius: 0.25rem;
+      transition: all 0.15s ease-in-out;
+    }
+    
+    .btn-primary {
+      color: #fff;
+      background-color: var(--primary);
+      border-color: var(--primary);
+    }
+    
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+    
+    .btn-outline-secondary {
+      color: var(--secondary);
+      background-color: transparent;
+      border-color: var(--secondary);
+    }
+    
+    .btn-outline-secondary:hover {
+      color: #fff;
+      background-color: var(--secondary);
+      border-color: var(--secondary);
+    }
+    
+    .btn-sm {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.875rem;
+      border-radius: 0.2rem;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+      vertical-align: baseline;
+      border-radius: 0.25rem;
+    }
+    
+    .badge-info {
+      color: #fff;
+      background-color: var(--info);
+    }
+    
+    .action-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 32px;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--secondary);
+      font-size: 14px;
+      border-top: 1px solid var(--border-color);
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background-color: white;
+    }
+    
+    .range-with-value {
+      display: flex;
+      align-items: center;
+    }
+    
+    .range-with-value input[type="range"] {
+      flex: 1;
+      margin-right: 16px;
+    }
+    
+    .range-value {
+      width: 48px;
+      text-align: center;
+      font-weight: 500;
+    }
+    
+    .advanced-toggle {
+      color: var(--primary);
+      background: none;
+      border: none;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+    
+    .advanced-section {
+      display: none;
+      background-color: rgba(44, 123, 229, 0.02);
+      border-radius: 0.25rem;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    
+    .advanced-section.show {
+      display: block;
+    }
+    
+    @media (max-width: 576px) {
+      .action-buttons {
+        flex-direction: column;
+        gap: 16px;
+      }
+      
+      .action-buttons .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo-container">
+      <img src="icons/icon128.png" alt="GazeTech Logo" class="logo">
+      <h1>Paramètres avancés</h1>
+    </div>
+    <p>Personnalisez GazeTech pour l'adapter à vos besoins</p>
+  </header>
+  
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Suivi du regard</h2>
+        <span class="badge badge-info">Actif</span>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label" for="gaze-smoothing">Lissage des mouvements</label>
+          <div class="range-with-value">
+            <input type="range" class="form-control" id="gaze-smoothing" min="0" max="10" value="5">
+            <span class="range-value" id="gaze-smoothing-value">5</span>
+          </div>
+          <small class="form-text">Contrôle la fluidité du déplacement du curseur. Un lissage plus élevé réduit les tremblements mais peut introduire un léger délai.</small>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="gaze-offset-x">Décalage horizontal</label>
+          <div class="range-with-value">
+            <input type="range" class="form-control" id="gaze-offset-x" min="-50" max="50" value="0">
+            <span class="range-value" id="gaze-offset-x-value">0</span>
+          </div>
+          <small class="form-text">Ajustez si le curseur est systématiquement décalé par rapport à votre regard horizontal.</small>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="gaze-offset-y">Décalage vertical</label>
+          <div class="range-with-value">
+            <input type="range" class="form-control" id="gaze-offset-y" min="-50" max="50" value="0">
+            <span class="range-value" id="gaze-offset-y-value">0</span>
+          </div>
+          <small class="form-text">Ajustez si le curseur est systématiquement décalé par rapport à votre regard vertical.</small>
+        </div>
+        
+        <button class="advanced-toggle" id="gaze-advanced-toggle">Afficher les options avancées</button>
+        
+        <div class="advanced-section" id="gaze-advanced-section">
+          <div class="form-group">
+            <label class="form-label" for="gaze-deadzone">Zone morte (px)</label>
+            <div class="range-with-value">
+              <input type="range" class="form-control" id="gaze-deadzone" min="0" max="50" value="5">
+              <span class="range-value" id="gaze-deadzone-value">5</span>
+            </div>
+            <small class="form-text">Rayon en pixels dans lequel les petits mouvements sont ignorés. Utile pour éviter les micro-tremblements.</small>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label" for="gaze-prediction">Prédiction de mouvement</label>
+            <div class="range-with-value">
+              <input type="range" class="form-control" id="gaze-prediction" min="0" max="10" value="3">
+              <span class="range-value" id="gaze-prediction-value">3</span>
+            </div>
+            <small class="form-text">Anticipe la direction du regard. Une valeur plus élevée peut réduire la latence mais peut rendre les mouvements moins précis.</small>
+          </div>
+          
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="use-head-tracking">
+            <label class="form-check-label" for="use-head-tracking">
+              Utiliser le suivi de la tête comme complément
+            </label>
+            <small class="form-text">Combine le suivi des yeux et de la tête pour une meilleure précision, particulièrement utile si vos yeux sont difficiles à suivre.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h2>Détection des clignements</h2>
+        <span class="badge badge-info">Actif</span>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label" for="blink-threshold">Seuil de détection</label>
+          <div class="range-with-value">
+            <input type="range" class="form-control" id="blink-threshold" min="1" max="10" value="5">
+            <span class="range-value" id="blink-threshold-value">5</span>
+          </div>
+          <small class="form-text">Contrôle la sensibilité de détection des clignements. Une valeur plus basse détecte des clignements plus subtils, mais peut augmenter les faux positifs.</small>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="double-blink-time">Temps entre deux clignements pour double-clic (ms)</label>
+          <input type="number" class="form-control" id="double-blink-time" value="300" min="100" max="1000" step="50">
+          <small class="form-text">Temps maximum entre deux clignements pour qu'ils soient considérés comme un double-clic.</small>
+        </div>
+        
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="blink-feedback" checked>
+          <label class="form-check-label" for="blink-feedback">
+            Retour visuel lors des clignements
+          </label>
+          <small class="form-text">Affiche un effet visuel sur le curseur lors de la détection d'un clignement.</small>
+        </div>
+        
+        <button class="advanced-toggle" id="blink-advanced-toggle">Afficher les options avancées</button>
+        
+        <div class="advanced-section" id="blink-advanced-section">
+          <div class="form-group">
+            <label class="form-label" for="blink-dwell-time">Temps de repos entre clics (ms)</label>
+            <input type="number" class="form-control" id="blink-dwell-time" value="500" min="0" max="2000" step="100">
+            <small class="form-text">Temps minimum entre deux clics pour éviter les clics accidentels.</small>
+          </div>
+          
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="blink-prevent-natural">
+            <label class="form-check-label" for="blink-prevent-natural">
+              Filtrer les clignements naturels
+            </label>
+            <small class="form-text">Tente de distinguer les clignements intentionnels des clignements naturels (peut réduire les faux positifs mais aussi la réactivité).</small>
+          </div>
+          
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="blink-long-rightclick">
+            <label class="form-check-label" for="blink-long-rightclick">
+              Clignement long pour clic droit
+            </label>
+            <small class="form-text">Un clignement maintenu pendant plus d'une seconde sera interprété comme un clic droit.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h2>Paramètres globaux</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label" for="performance-mode">Mode performance</label>
+          <select class="form-control" id="performance-mode">
+            <option value="balanced">Équilibré (recommandé)</option>
+            <option value="performance">Performance maximale</option>
+            <option value="quality">Qualité maximale</option>
+            <option value="battery">Économie d'énergie</option>
+          </select>
+          <small class="form-text">Ajuste automatiquement plusieurs paramètres pour trouver le bon équilibre entre réactivité et utilisation du CPU.</small>
+        </div>
+        
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="auto-start" checked>
+          <label class="form-check-label" for="auto-start">
+            Activer automatiquement au démarrage du navigateur
+          </label>
+        </div>
+        
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="anonymous-stats">
+          <label class="form-check-label" for="anonymous-stats">
+            Envoyer des statistiques d'utilisation anonymisées
+          </label>
+          <small class="form-text">Nous aide à améliorer l'extension sans collecter d'informations personnelles.</small>
+        </div>
+        
+        <div class="form-group">
+          <label class="form-label" for="excluded-sites">Sites exclus</label>
+          <textarea class="form-control" id="excluded-sites" rows="3" placeholder="exemple.com&#10;autresite.fr"></textarea>
+          <small class="form-text">Liste des domaines où l'extension sera automatiquement désactivée (un par ligne).</small>
+        </div>
+      </div>
+    </div>
+    
+    <div class="action-buttons">
+      <div>
+        <button class="btn btn-outline-secondary" id="reset-defaults">Réinitialiser les paramètres</button>
+      </div>
+      <div>
+        <button class="btn btn-primary" id="save-settings">Enregistrer les modifications</button>
+      </div>
+    </div>
+  </div>
+  
+  <footer>
+    GazeTech version 1.0 - <a href="help.html">Aide</a>
+  </footer>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Link range inputs to their value display
+      const rangeInputs = document.querySelectorAll('input[type="range"]');
+      rangeInputs.forEach(input => {
+        const valueDisplay = document.getElementById(`${input.id}-value`);
+        if (valueDisplay) {
+          valueDisplay.textContent = input.value;
+          
+          input.addEventListener('input', function() {
+            valueDisplay.textContent = this.value;
+          });
+        }
+      });
+      
+      // Advanced toggle buttons
+      const toggleButtons = document.querySelectorAll('.advanced-toggle');
+      toggleButtons.forEach(button => {
+        const sectionId = button.id.replace('-toggle', '-section');
+        const section = document.getElementById(sectionId);
+        
+        button.addEventListener('click', function() {
+          if (section.classList.contains('show')) {
+            section.classList.remove('show');
+            this.textContent = 'Afficher les options avancées';
+          } else {
+            section.classList.add('show');
+            this.textContent = 'Masquer les options avancées';
+          }
+        });
+      });
+      
+      // Load settings from Chrome storage
+      chrome.storage.sync.get(null, function(items) {
+        // Set form values based on stored settings
+        // This would be more extensive in a real extension
+        if (items.advancedSettings) {
+          // Example of setting a range input
+          if (items.advancedSettings.gazeSmoothing !== undefined) {
+            const input = document.getElementById('gaze-smoothing');
+            input.value = items.advancedSettings.gazeSmoothing;
+            document.getElementById('gaze-smoothing-value').textContent = input.value;
+          }
+          
+          // Example of setting a checkbox
+          if (items.advancedSettings.useHeadTracking !== undefined) {
+            document.getElementById('use-head-tracking').checked = items.advancedSettings.useHeadTracking;
+          }
+        }
+      });
+      
+      // Save settings button
+      document.getElementById('save-settings').addEventListener('click', function() {
+        // Collect all settings from form inputs
+        const advancedSettings = {
+          gazeSmoothing: parseInt(document.getElementById('gaze-smoothing').value),
+          gazeOffsetX: parseInt(document.getElementById('gaze-offset-x').value),
+          gazeOffsetY: parseInt(document.getElementById('gaze-offset-y').value),
+          gazeDeadzone: parseInt(document.getElementById('gaze-deadzone').value),
+          gazePrediction: parseInt(document.getElementById('gaze-prediction').value),
+          useHeadTracking: document.getElementById('use-head-tracking').checked,
+          blinkThreshold: parseInt(document.getElementById('blink-threshold').value),
+          doubleBlinkTime: parseInt(document.getElementById('double-blink-time').value),
+          blinkFeedback: document.getElementById('blink-feedback').checked,
+          blinkDwellTime: parseInt(document.getElementById('blink-dwell-time').value),
+          blinkPreventNatural: document.getElementById('blink-prevent-natural').checked,
+          blinkLongRightclick: document.getElementById('blink-long-rightclick').checked,
+          performanceMode: document.getElementById('performance-mode').value,
+          autoStart: document.getElementById('auto-start').checked,
+          anonymousStats: document.getElementById('anonymous-stats').checked,
+          excludedSites: document.getElementById('excluded-sites').value.split('\n').filter(site => site.trim() !== '')
+        };
+        
+        // Save to Chrome storage
+        chrome.storage.sync.set({advancedSettings: advancedSettings}, function() {
+          // Show saved confirmation
+          alert('Paramètres enregistrés avec succès!');
+          
+          // Notify content scripts
+          chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            if (tabs[0]) {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'advancedSettingsUpdated',
+                settings: advancedSettings
+              });
+            }
+          });
+        });
+      });
+      
+      // Reset defaults button
+      document.getElementById('reset-defaults').addEventListener('click', function() {
+        if (confirm('Êtes-vous sûr de vouloir réinitialiser tous les paramètres avancés?')) {
+          // Set default values
+          document.getElementById('gaze-smoothing').value = 5;
+          document.getElementById('gaze-smoothing-value').textContent = 5;
+          document.getElementById('gaze-offset-x').value = 0;
+          document.getElementById('gaze-offset-x-value').textContent = 0;
+          document.getElementById('gaze-offset-y').value = 0;
+          document.getElementById('gaze-offset-y-value').textContent = 0;
+          document.getElementById('gaze-deadzone').value = 5;
+          document.getElementById('gaze-deadzone-value').textContent = 5;
+          document.getElementById('gaze-prediction').value = 3;
+          document.getElementById('gaze-prediction-value').textContent = 3;
+          document.getElementById('use-head-tracking').checked = false;
+          document.getElementById('blink-threshold').value = 5;
+          document.getElementById('blink-threshold-value').textContent = 5;
+          document.getElementById('double-blink-time').value = 300;
+          document.getElementById('blink-feedback').checked = true;
+          document.getElementById('blink-dwell-time').value = 500;
+          document.getElementById('blink-prevent-natural').checked = false;
+          document.getElementById('blink-long-rightclick').checked = false;
+          document.getElementById('performance-mode').value = 'balanced';
+          document.getElementById('auto-start').checked = true;
+          document.getElementById('anonymous-stats').checked = false;
+          document.getElementById('excluded-sites').value = '';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

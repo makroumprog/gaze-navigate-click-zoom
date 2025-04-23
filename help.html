@@ -1,0 +1,353 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aide - GazeTech</title>
+  <style>
+    :root {
+      --primary: #2c7be5;
+      --secondary: #95aac9;
+      --success: #00d97e;
+      --dark: #12263f;
+      --light: #f9fbfd;
+      --border-color: #edf2f9;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: var(--dark);
+      background-color: var(--light);
+      padding: 0;
+      margin: 0;
+    }
+    
+    header {
+      background-color: white;
+      padding: 24px;
+      box-shadow: 0 0.125rem 0.25rem rgba(18, 38, 63, 0.075);
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .logo-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    
+    .logo {
+      width: 60px;
+      height: 60px;
+      margin-right: 16px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px;
+      margin-bottom: 64px;
+    }
+    
+    .card {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03);
+      margin-bottom: 32px;
+      overflow: hidden;
+    }
+    
+    .card-header {
+      padding: 16px 24px;
+      background-color: rgba(44, 123, 229, 0.05);
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .card-body {
+      padding: 24px;
+    }
+    
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--dark);
+    }
+    
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    
+    p {
+      margin-bottom: 16px;
+      color: #566a7f;
+    }
+    
+    .faq-item {
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+    
+    .faq-item:last-child {
+      border-bottom: none;
+    }
+    
+    .faq-question {
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--primary);
+    }
+    
+    .feature-list {
+      list-style-type: none;
+      margin: 16px 0;
+    }
+    
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 16px;
+      padding-left: 24px;
+      position: relative;
+    }
+    
+    .feature-list li::before {
+      content: "👁️";
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+    
+    .troubleshooting {
+      list-style-type: none;
+      margin: 16px 0;
+    }
+    
+    .troubleshooting li {
+      margin-bottom: 24px;
+      padding-left: 24px;
+      position: relative;
+    }
+    
+    .troubleshooting li::before {
+      content: "❗";
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+    
+    .troubleshooting h4 {
+      margin-bottom: 8px;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--secondary);
+      font-size: 14px;
+      border-top: 1px solid var(--border-color);
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background-color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo-container">
+      <img src="icons/icon128.png" alt="GazeTech Logo" class="logo">
+      <h1>Aide GazeTech</h1>
+    </div>
+    <p>Tout ce que vous devez savoir pour utiliser GazeTech</p>
+  </header>
+  
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Fonctionnalités détaillées</h2>
+      </div>
+      <div class="card-body">
+        <h3>Suivi du regard</h3>
+        <p>
+          GazeTech utilise des algorithmes avancés pour suivre la position de vos yeux et mapper leur mouvement sur l'écran. Le curseur se déplace en fonction de l'endroit où vous regardez, vous permettant de pointer sans utiliser vos mains.
+        </p>
+        
+        <h3>Clics par clignement</h3>
+        <p>
+          L'extension détecte vos clignements d'œil pour simuler des clics de souris:
+        </p>
+        <ul class="feature-list">
+          <li><strong>Un seul clignement</strong> - Équivalent à un clic simple</li>
+          <li><strong>Deux clignements rapides</strong> - Équivalent à un double-clic</li>
+        </ul>
+        <p>
+          Vous pouvez ajuster le délai de détection des clignements dans les paramètres pour l'adapter à votre rythme naturel de clignement.
+        </p>
+        
+        <h3>Zoom automatique</h3>
+        <p>
+          Lorsque vous regardez fixement une image pendant quelques secondes, GazeTech effectue automatiquement un zoom sur cette image pour vous permettre d'en voir les détails. Le zoom se désactive automatiquement lorsque vous détournez le regard.
+        </p>
+        
+        <h3>Lecture de texte</h3>
+        <p>
+          Si vous regardez un paragraphe de texte pendant un certain temps, GazeTech utilisera la synthèse vocale pour vous le lire à haute voix. Cette fonction est particulièrement utile pour les longs articles ou pour les personnes ayant des difficultés de lecture.
+        </p>
+        
+        <h3>Navigation simplifiée</h3>
+        <p>
+          GazeTech facilite la navigation entre les pages web et le défilement:
+        </p>
+        <ul class="feature-list">
+          <li><strong>Regarder le bord gauche</strong> - Revenir à la page précédente</li>
+          <li><strong>Regarder le bord droit</strong> - Aller à la page suivante</li>
+          <li><strong>Regarder le bas de l'écran</strong> - Faire défiler la page vers le bas</li>
+        </ul>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h2>Calibration</h2>
+      </div>
+      <div class="card-body">
+        <p>
+          La calibration est une étape essentielle pour assurer la précision du suivi oculaire. Pendant ce processus, vous regarderez une série de points sur l'écran pour que GazeTech puisse apprendre à cartographier vos mouvements oculaires spécifiques.
+        </p>
+        
+        <h3>Quand recalibrer?</h3>
+        <ul>
+          <li>Après l'installation initiale de l'extension</li>
+          <li>Si vous changez significativement de position par rapport à votre écran</li>
+          <li>Si vous changez d'environnement (luminosité différente)</li>
+          <li>Si vous constatez que la précision du suivi oculaire diminue</li>
+        </ul>
+        
+        <h3>Conseils pour une calibration optimale</h3>
+        <ul>
+          <li>Assurez-vous que votre visage est bien éclairé, sans ombres fortes</li>
+          <li>Maintenez votre tête relativement stable pendant la calibration</li>
+          <li>Suivez attentivement les instructions à l'écran</li>
+          <li>Essayez de ne pas cligner excessivement pendant le processus</li>
+        </ul>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h2>FAQ</h2>
+      </div>
+      <div class="card-body">
+        <div class="faq-item">
+          <div class="faq-question">Comment puis-je désactiver temporairement GazeTech?</div>
+          <div class="faq-answer">
+            Vous pouvez désactiver temporairement l'extension en cliquant sur son icône dans la barre d'outils Chrome et en utilisant le bouton "Désactiver" dans le popup. Vous pouvez également désactiver des fonctionnalités spécifiques depuis les paramètres.
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-question">Est-ce que GazeTech fonctionne sur tous les sites web?</div>
+          <div class="faq-answer">
+            GazeTech est conçu pour fonctionner sur la plupart des sites web standards. Cependant, certains sites utilisant des technologies particulières ou des interfaces non standard pourraient présenter des problèmes de compatibilité. Nous travaillons constamment à améliorer la compatibilité.
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-question">Quelles sont les exigences matérielles minimales?</div>
+          <div class="faq-answer">
+            GazeTech nécessite:
+            <ul>
+              <li>Une webcam fonctionnelle (idéalement 720p ou supérieure)</li>
+              <li>Un processeur relativement récent (pour le traitement en temps réel)</li>
+              <li>Google Chrome à jour</li>
+              <li>Un éclairage adéquat pour que la caméra puisse bien voir vos yeux</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-question">Est-ce que mes données visuelles sont collectées ou partagées?</div>
+          <div class="faq-answer">
+            Non. GazeTech traite toutes les données de votre webcam localement dans votre navigateur. Aucune image ou donnée vidéo n'est envoyée à des serveurs externes ou partagée avec des tiers. Votre vie privée est notre priorité.
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-question">Comment puis-je ajuster la sensibilité du suivi oculaire?</div>
+          <div class="faq-answer">
+            Vous pouvez ajuster la sensibilité dans le menu des paramètres de l'extension. Cliquez sur l'icône de GazeTech dans votre barre d'outils, puis utilisez les curseurs pour régler individuellement chaque fonctionnalité.
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h2>Dépannage</h2>
+      </div>
+      <div class="card-body">
+        <ul class="troubleshooting">
+          <li>
+            <h4>La webcam ne s'active pas</h4>
+            <p>
+              Vérifiez que vous avez accordé les permissions d'accès à la caméra à l'extension GazeTech. Dans Chrome, cliquez sur l'icône de cadenas à gauche de l'URL, puis assurez-vous que l'accès à la caméra est autorisé.
+            </p>
+          </li>
+          
+          <li>
+            <h4>Le curseur ne suit pas précisément mon regard</h4>
+            <p>
+              Essayez de recalibrer l'extension. Assurez-vous également que vous êtes dans un environnement bien éclairé et que votre visage est clairement visible par la webcam. Ajustez la sensibilité du suivi du regard dans les paramètres.
+            </p>
+          </li>
+          
+          <li>
+            <h4>Les clignements ne sont pas détectés correctement</h4>
+            <p>
+              Ajustez le délai de détection des clignements dans les paramètres. Si vous clignez naturellement des yeux rapidement, réduisez le délai. Si vous clignez lentement, augmentez-le. Assurez-vous également que votre visage est bien éclairé.
+            </p>
+          </li>
+          
+          <li>
+            <h4>La lecture de texte ne fonctionne pas</h4>
+            <p>
+              Vérifiez que vous avez activé la fonction dans les paramètres. Certains sites web peuvent bloquer la synthèse vocale ou utiliser des formats de texte non standard qui sont difficiles à détecter. Essayez sur différents sites pour vérifier.
+            </p>
+          </li>
+          
+          <li>
+            <h4>L'extension ralentit mon navigateur</h4>
+            <p>
+              Le traitement en temps réel des données de la webcam peut être intensif pour certains ordinateurs. Essayez de désactiver les fonctionnalités dont vous n'avez pas besoin pour réduire la charge de traitement. Fermez également les onglets et applications inutiles.
+            </p>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  
+  <footer>
+    Pour plus d'informations ou de l'aide supplémentaire, contactez notre support à support@gazetech.example.com
+  </footer>
+</body>
+</html>

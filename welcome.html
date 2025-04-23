@@ -1,0 +1,299 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bienvenue sur GazeTech - Navigation oculaire</title>
+  <style>
+    :root {
+      --primary: #2c7be5;
+      --secondary: #95aac9;
+      --success: #00d97e;
+      --dark: #12263f;
+      --light: #f9fbfd;
+      --border-color: #edf2f9;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: var(--dark);
+      background-color: var(--light);
+      padding: 0;
+      margin: 0;
+    }
+    
+    header {
+      background-color: white;
+      padding: 24px;
+      box-shadow: 0 0.125rem 0.25rem rgba(18, 38, 63, 0.075);
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    
+    .logo-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    
+    .logo {
+      width: 60px;
+      height: 60px;
+      margin-right: 16px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    
+    .card {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03);
+      margin-bottom: 32px;
+      overflow: hidden;
+    }
+    
+    .card-header {
+      padding: 16px 24px;
+      background-color: rgba(44, 123, 229, 0.05);
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .card-body {
+      padding: 24px;
+    }
+    
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--dark);
+    }
+    
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    
+    p {
+      margin-bottom: 16px;
+      color: #566a7f;
+    }
+    
+    .feature-list {
+      list-style-type: none;
+      margin: 16px 0;
+    }
+    
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 16px;
+      padding-left: 24px;
+      position: relative;
+    }
+    
+    .feature-list li::before {
+      content: "👁️";
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+    
+    .btn {
+      display: inline-block;
+      font-weight: 500;
+      text-align: center;
+      white-space: nowrap;
+      vertical-align: middle;
+      cursor: pointer;
+      border: 1px solid transparent;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      line-height: 1.5;
+      border-radius: 0.25rem;
+      transition: all 0.15s ease-in-out;
+    }
+    
+    .btn-primary {
+      color: #fff;
+      background-color: var(--primary);
+      border-color: var(--primary);
+    }
+    
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+    
+    .text-center {
+      text-align: center;
+    }
+    
+    .steps {
+      counter-reset: step-counter;
+      list-style-type: none;
+      margin: 24px 0;
+    }
+    
+    .steps li {
+      position: relative;
+      margin-bottom: 24px;
+      padding-left: 48px;
+      min-height: 32px;
+    }
+    
+    .steps li::before {
+      content: counter(step-counter);
+      counter-increment: step-counter;
+      position: absolute;
+      left: 0;
+      top: 0;
+      background-color: var(--primary);
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+    
+    .note {
+      background-color: rgba(0, 217, 126, 0.1);
+      border-left: 4px solid var(--success);
+      padding: 16px;
+      margin-bottom: 24px;
+      border-radius: 4px;
+    }
+    
+    .action-row {
+      display: flex;
+      justify-content: center;
+      margin-top: 32px;
+      margin-bottom: 24px;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--secondary);
+      font-size: 14px;
+      border-top: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo-container">
+      <img src="icons/icon128.png" alt="GazeTech Logo" class="logo">
+      <h1>GazeTech</h1>
+    </div>
+    <p>Navigation web par le mouvement des yeux</p>
+  </header>
+  
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h2>Bienvenue sur GazeTech!</h2>
+      </div>
+      <div class="card-body">
+        <p>
+          Merci d'avoir installé GazeTech, l'extension Chrome qui vous permet de naviguer sur le web en utilisant uniquement vos yeux. Cette technologie avancée utilise votre webcam pour suivre vos mouvements oculaires et transformer votre regard en actions sur la page.
+        </p>
+        
+        <div class="note">
+          <strong>Remarque importante:</strong> Cette extension nécessite l'accès à votre webcam pour fonctionner. Vos données visuelles sont traitées localement et ne sont jamais envoyées à des serveurs externes.
+        </div>
+        
+        <h3>Fonctionnalités principales</h3>
+        <ul class="feature-list">
+          <li><strong>Déplacement du curseur</strong> - Suivez le regard de l'utilisateur via la webcam et déplacez le curseur automatiquement</li>
+          <li><strong>Clics par clignement</strong> - Clic simple avec un seul clignement, double-clic avec deux clignements rapides</li>
+          <li><strong>Zoom automatique</strong> - Zoom sur les images que vous regardez fixement pendant quelques secondes</li>
+          <li><strong>Lecture de texte</strong> - Les paragraphes que vous regardez sont lus à haute voix</li>
+          <li><strong>Navigation simplifiée</strong> - Regardez les bords de l'écran pour naviguer entre les pages et le bas pour faire défiler</li>
+        </ul>
+        
+        <h3>Commencer</h3>
+        <p>Pour commencer à utiliser GazeTech, suivez ces étapes simples:</p>
+        
+        <ol class="steps">
+          <li>
+            <strong>Calibration</strong> - Calibrez l'extension pour qu'elle s'adapte à vos mouvements oculaires spécifiques. Cette étape est essentielle pour une précision optimale.
+          </li>
+          <li>
+            <strong>Autorisation de la webcam</strong> - Assurez-vous d'accorder à l'extension l'autorisation d'accéder à votre webcam lorsque vous y êtes invité.
+          </li>
+          <li>
+            <strong>Ajustement des paramètres</strong> - Personnalisez les paramètres de sensibilité et de comportement selon vos préférences.
+          </li>
+        </ol>
+        
+        <div class="action-row">
+          <button id="start-calibration" class="btn btn-primary">Commencer la calibration</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <h2>Conseils d'utilisation</h2>
+      </div>
+      <div class="card-body">
+        <h3>Pour de meilleurs résultats</h3>
+        <ul>
+          <li>Utilisez GazeTech dans un environnement bien éclairé</li>
+          <li>Assurez-vous que votre webcam a une vue dégagée de votre visage</li>
+          <li>Maintenez une distance confortable entre vous et l'écran (environ 50-70 cm)</li>
+          <li>Recalibrez si vous changez significativement de position</li>
+        </ul>
+        
+        <h3>Raccourcis</h3>
+        <ul>
+          <li><strong>Désactiver temporairement</strong> - Cliquez sur l'icône de l'extension dans la barre d'outils</li>
+          <li><strong>Recalibrer</strong> - Disponible dans le menu de l'extension</li>
+          <li><strong>Ajuster la sensibilité</strong> - Personnalisez chaque fonctionnalité dans les paramètres</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  
+  <footer>
+    &copy; 2023 GazeTech - Navigation oculaire. Tous droits réservés.
+  </footer>
+  
+  <script>
+    document.getElementById('start-calibration').addEventListener('click', function() {
+      chrome.runtime.sendMessage({action: 'openCalibration'}, function(response) {
+        if (chrome.runtime.lastError) {
+          console.error(chrome.runtime.lastError);
+        }
+      });
+      
+      // For demonstration, we'll just open the popup
+      chrome.action.openPopup();
+    });
+  </script>
+</body>
+</html>

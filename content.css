@@ -1,0 +1,86 @@
+
+#gazetech-cursor {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: rgba(44, 123, 229, 0.5);
+  border: 2px solid rgba(44, 123, 229, 0.8);
+  pointer-events: none;
+  z-index: 999999;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(44, 123, 229, 0.5);
+  transition: background-color 0.2s, opacity 0.2s;
+}
+
+#gazetech-video, #gazetech-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+[data-gazetech-zoomed="true"] {
+  position: relative;
+  z-index: 9999;
+  box-shadow: 0 0 20px rgba(44, 123, 229, 0.6);
+}
+
+.gazetech-highlighted-text {
+  background-color: rgba(44, 123, 229, 0.1);
+  box-shadow: 0 0 5px rgba(44, 123, 229, 0.3);
+  border-radius: 2px;
+}
+
+.gazetech-edge-left, .gazetech-edge-right {
+  position: fixed;
+  width: 5%;
+  height: 100vh;
+  top: 0;
+  z-index: 999990;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.gazetech-edge-left {
+  left: 0;
+  background: linear-gradient(to right, rgba(44, 123, 229, 0.2), transparent);
+}
+
+.gazetech-edge-right {
+  right: 0;
+  background: linear-gradient(to left, rgba(44, 123, 229, 0.2), transparent);
+}
+
+.gazetech-edge-bottom {
+  position: fixed;
+  width: 100%;
+  height: 5%;
+  bottom: 0;
+  left: 0;
+  z-index: 999990;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  background: linear-gradient(to top, rgba(44, 123, 229, 0.2), transparent);
+}
+
+.gazetech-edge-active {
+  opacity: 1;
+}
+
+/* Animation for blink feedback */
+@keyframes gazetech-blink {
+  0% { transform: scale(1) translate(-50%, -50%); }
+  50% { transform: scale(1.5) translate(-33%, -33%); }
+  100% { transform: scale(1) translate(-50%, -50%); }
+}
+
+.gazetech-blink-animation {
+  animation: gazetech-blink 0.3s ease-in-out;
+}
