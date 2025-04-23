@@ -1,3 +1,4 @@
+
 document.addEventListener('DOMContentLoaded', function() {
   // Elements
   const calibrateBtn = document.getElementById('calibrate-btn');
@@ -175,6 +176,9 @@ document.addEventListener('DOMContentLoaded', function() {
   let gazeDwellTimer = null;
   let currentCalibrationData = [];
   let isCalibrating = false;
+  let dwellProgress = 0;
+  let dwellInterval = null;
+  let calibrationSuccess = false;
   
   function initializeCalibration() {
     webcam = document.getElementById('webcam');
@@ -187,6 +191,7 @@ document.addEventListener('DOMContentLoaded', function() {
     currentPoint = 0;
     isCalibrating = false;
     currentCalibrationData = [];
+    calibrationSuccess = false;
     
     // Set up calibration points (corners and center)
     calibrationPoints = [
@@ -199,6 +204,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Position first point
     positionCalibrationPoint(0);
+    
+    // Update instructions
+    document.getElementById('calibration-instructions').textContent = 
+      'Regardez le point et suivez-le des yeux';
   }
   
   function startCalibration() {
@@ -218,18 +227,13 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('calibration-instructions').textContent = 
           'Fixez le point pendant 2 secondes';
           
-        // Change button text
-        startCalibrationBtn.textContent = 'Suivant';
+        // Hide button during automatic calibration
+        startCalibrationBtn.style.display = 'none';
         
-        // Start gaze tracking if we had a face detection API
+        // Start gaze tracking
         isCalibrating = true;
         
-        // Update button event handler
-        startCalibrationBtn.removeEventListener('click', startCalibration);
-        startCalibrationBtn.addEventListener('click', nextCalibrationPoint);
-        
-        // Start a simulated gaze dwell counter for demonstration
-        // In a real implementation, this would be triggered by actual eye tracking
+        // Start a simulated gaze dwell detection for demonstration
         simulateGazeDwell();
       };
     })
@@ -240,16 +244,21 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   
-  // Add a simulated gaze dwell detection
+  // Add a simulated gaze dwell detection with progress indicator
   function simulateGazeDwell() {
     if (!isCalibrating) return;
     
     // Visual feedback - change target color to indicate dwell progress
-    let startTime = Date.now();
     let dwellRequired = 2000; // 2 seconds
+    dwellProgress = 0;
+    
+    // Clear any existing elements in the target
+    while (calibrationTarget.firstChild) {
+      calibrationTarget.removeChild(calibrationTarget.firstChild);
+    }
     
     // Add visual indicator for dwell time
-    let dwellIndicator = document.createElement('div');
+    const dwellIndicator = document.createElement('div');
     dwellIndicator.style.cssText = `
       position: absolute;
       top: 0;
@@ -263,31 +272,57 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     calibrationTarget.appendChild(dwellIndicator);
     
-    // Start animation after a small delay
+    // Create status text element
+    const statusElement = document.createElement('div');
+    statusElement.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+      text-shadow: 0 0 3px rgba(0,0,0,0.5);
+    `;
+    calibrationTarget.appendChild(statusElement);
+    
+    // Start animation
     setTimeout(() => {
       dwellIndicator.style.transform = 'scale(1)';
     }, 50);
     
-    // After 2 seconds, highlight the button to indicate ready to proceed
-    gazeDwellTimer = setTimeout(() => {
-      // Visual feedback that dwell is complete
-      calibrationTarget.style.backgroundColor = 'rgba(0, 217, 126, 0.8)';
-      startCalibrationBtn.classList.add('highlight');
+    // Update progress in small increments
+    dwellInterval = setInterval(() => {
+      dwellProgress += 100; // 100ms increments
+      let percentage = Math.min(100, (dwellProgress / dwellRequired) * 100);
+      statusElement.textContent = Math.floor(percentage) + '%';
       
-      // Save simulated calibration data for this point
-      currentCalibrationData.push({
-        point: currentPoint,
-        x: calibrationPoints[currentPoint].x,
-        y: calibrationPoints[currentPoint].y,
-        // In a real implementation, we would store actual eye position data
-        eyeData: { x: Math.random() * 100, y: Math.random() * 100 }
-      });
-      
-      // Update instruction to click next
-      document.getElementById('calibration-instructions').textContent = 
-        'Cliquez sur Suivant pour continuer';
-      
-    }, dwellRequired);
+      if (dwellProgress >= dwellRequired) {
+        clearInterval(dwellInterval);
+        
+        // Visual feedback that dwell is complete
+        calibrationTarget.style.backgroundColor = 'rgba(0, 217, 126, 0.8)';
+        statusElement.textContent = '✓';
+        
+        // Save simulated calibration data for this point
+        saveCalibrationDataPoint();
+        
+        // Move to next point after a short delay
+        setTimeout(() => {
+          nextCalibrationPoint();
+        }, 500); // Short delay to show completion before moving to next point
+      }
+    }, 100);
+  }
+  
+  function saveCalibrationDataPoint() {
+    currentCalibrationData.push({
+      point: currentPoint,
+      x: calibrationPoints[currentPoint].x,
+      y: calibrationPoints[currentPoint].y,
+      // In a real implementation, we would store actual eye position data
+      eyeData: { x: Math.random() * 100, y: Math.random() * 100 }
+    });
   }
   
   function positionCalibrationPoint(index) {
@@ -302,9 +337,6 @@ document.addEventListener('DOMContentLoaded', function() {
       while (calibrationTarget.firstChild) {
         calibrationTarget.removeChild(calibrationTarget.firstChild);
       }
-      
-      // Remove highlight from button
-      startCalibrationBtn.classList.remove('highlight');
     }
   }
   
@@ -315,12 +347,16 @@ document.addEventListener('DOMContentLoaded', function() {
       gazeDwellTimer = null;
     }
     
+    if (dwellInterval) {
+      clearInterval(dwellInterval);
+      dwellInterval = null;
+    }
+    
     currentPoint++;
     
     if (currentPoint >= calibrationPoints.length) {
-      // Calibration complete
-      document.getElementById('calibration-instructions').textContent = 
-        'Calibration terminée!';
+      // All points completed - calibration is successful
+      calibrationSuccess = true;
       
       // Save calibration data to storage
       chrome.storage.sync.set({
@@ -328,8 +364,37 @@ document.addEventListener('DOMContentLoaded', function() {
         calibrationData: currentCalibrationData
       });
       
-      // Visual feedback of completion
-      calibrationTarget.style.backgroundColor = 'rgba(0, 217, 126, 0.8)';
+      // Show success message
+      document.getElementById('calibration-instructions').textContent = 
+        'Calibration terminée avec succès!';
+      
+      // Show success animation
+      const successAnimation = document.createElement('div');
+      successAnimation.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 100px;
+        height: 100px;
+        background-color: rgba(0, 217, 126, 0.8);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+        animation: pulse 1s infinite;
+      `;
+      successAnimation.textContent = '✓';
+      
+      // Clear calibration area
+      const calibrationArea = document.getElementById('calibration-area');
+      while (calibrationArea.firstChild) {
+        calibrationArea.removeChild(calibrationArea.firstChild);
+      }
+      
+      calibrationArea.appendChild(successAnimation);
       
       // Close modal after a short delay
       setTimeout(() => {
@@ -337,10 +402,9 @@ document.addEventListener('DOMContentLoaded', function() {
         stopCalibration();
         
         // Reset for next time
+        startCalibrationBtn.style.display = 'block';
         startCalibrationBtn.textContent = 'Commencer';
-        startCalibrationBtn.removeEventListener('click', nextCalibrationPoint);
-        startCalibrationBtn.addEventListener('click', startCalibration);
-      }, 1500);
+      }, 2000);
     } else {
       // Move to next point
       positionCalibrationPoint(currentPoint);
@@ -363,18 +427,46 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Reset calibration state
     isCalibrating = false;
+    
     if (gazeDwellTimer) {
       clearTimeout(gazeDwellTimer);
       gazeDwellTimer = null;
+    }
+    
+    if (dwellInterval) {
+      clearInterval(dwellInterval);
+      dwellInterval = null;
     }
     
     // Reset calibration UI
     document.getElementById('calibration-instructions').textContent = 
       'Regardez le point et suivez-le des yeux';
       
+    startCalibrationBtn.style.display = 'block';
     startCalibrationBtn.textContent = 'Commencer';
-    startCalibrationBtn.classList.remove('highlight');
-    startCalibrationBtn.removeEventListener('click', nextCalibrationPoint);
-    startCalibrationBtn.addEventListener('click', startCalibration);
+    
+    // Recreate webcam and overlay elements if they were removed
+    const calibrationArea = document.getElementById('calibration-area');
+    if (!document.getElementById('webcam')) {
+      const webcamContainer = document.createElement('div');
+      webcamContainer.id = 'webcam-container';
+      
+      const webcamEl = document.createElement('video');
+      webcamEl.id = 'webcam';
+      webcamEl.autoplay = true;
+      webcamEl.playsinline = true;
+      
+      const overlayCanvas = document.createElement('canvas');
+      overlayCanvas.id = 'face-overlay';
+      
+      webcamContainer.appendChild(webcamEl);
+      webcamContainer.appendChild(overlayCanvas);
+      calibrationArea.appendChild(webcamContainer);
+      
+      const targetEl = document.createElement('div');
+      targetEl.id = 'calibration-target';
+      calibrationArea.appendChild(targetEl);
+    }
   }
 });
+
