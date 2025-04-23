@@ -1,4 +1,3 @@
-
 // Extension background script
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -31,9 +30,11 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
-// Ajouter un état global pour suivre si la caméra est active
+// Global state to track camera status across tabs
 let cameraActive = false;
 let activeTabId = null;
+// Keep track of all tabs with camera activated
+let activeCameraTabs = new Set();
 
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -44,29 +45,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Required for asynchronous sendResponse
   }
 
-  // Nouveau gestionnaire pour suivre l'état de la caméra
+  // Camera status update handler
   if (request.action === 'cameraStatusUpdate') {
     cameraActive = request.isActive;
     if (sender.tab) {
       activeTabId = sender.tab.id;
+      if (request.isActive) {
+        activeCameraTabs.add(sender.tab.id);
+      } else {
+        activeCameraTabs.delete(sender.tab.id);
+      }
     }
     sendResponse({ success: true });
     return true;
   }
 });
 
-// Suivre les changements d'onglets
+// Track tab changes
 chrome.tabs.onActivated.addListener((activeInfo) => {
-  // Si la caméra était active et qu'on change d'onglet, notifier le nouvel onglet
+  // If camera is active somewhere, notify the new tab to restore it
   if (cameraActive && activeTabId !== activeInfo.tabId) {
     chrome.tabs.sendMessage(activeInfo.tabId, {
       action: 'restoreCamera',
       shouldRestore: true
     }).catch(error => {
-      // L'erreur se produit souvent si l'onglet n'a pas encore le content script
-      console.log("Impossible de restaurer la caméra sur le nouvel onglet:", error);
+      // This error often occurs if tab doesn't have content script yet
+      console.log("Cannot restore camera on new tab:", error);
     });
     activeTabId = activeInfo.tabId;
+  }
+});
+
+// Handle tab closing
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (activeCameraTabs.has(tabId)) {
+    activeCameraTabs.delete(tabId);
+    // If this was the last tab with camera, update global state
+    if (activeCameraTabs.size === 0) {
+      cameraActive = false;
+    }
+  }
+});
+
+// Track visibility changes
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && activeCameraTabs.has(tabId)) {
+    // If this tab had camera active, try to restore it
+    chrome.tabs.sendMessage(tabId, {
+      action: 'restoreCamera',
+      shouldRestore: true
+    }).catch(() => {
+      console.log("Tab updated but couldn't restore camera");
+    });
   }
 });
 

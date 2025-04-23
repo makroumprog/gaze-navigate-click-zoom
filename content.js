@@ -1,3 +1,4 @@
+
 // GazeTech Content Script
 // This script is injected into web pages to enable eye tracking control
 
@@ -9,6 +10,7 @@ let faceModel = null;
 let eyeTracker = null;
 let webcamStream = null;
 let faceMesh = null;
+let cameraInitialized = false;
 
 // Element refs
 let video = null;
@@ -24,6 +26,8 @@ let isSpeaking = false;
 let speechSynthesis = window.speechSynthesis;
 let calibrationData = null; // Pour stocker les données de calibration
 let eyeMovementSensitivity = 3; // Sensibilité des mouvements oculaires (ajustable)
+let restoreCameraAttempts = 0;
+const MAX_RESTORE_ATTEMPTS = 3;
 
 // Load settings from storage
 function loadSettings() {
@@ -100,6 +104,11 @@ function initializeUI() {
 
 // Initialize webcam and face tracking
 async function initializeTracking() {
+  if (cameraInitialized) {
+    console.log('Camera already initialized, skipping');
+    return;
+  }
+
   try {
     // Access webcam
     webcamStream = await navigator.mediaDevices.getUserMedia({
@@ -108,11 +117,14 @@ async function initializeTracking() {
     
     video.srcObject = webcamStream;
     await video.play();
+    cameraInitialized = true;
     
-    // Notifier le background script que la caméra est active
+    // Notify the background script that camera is active
     chrome.runtime.sendMessage({
       action: 'cameraStatusUpdate',
       isActive: true
+    }).catch(error => {
+      console.log("Failed to notify background script about camera status:", error);
     });
     
     // Load face mesh model if available
@@ -132,6 +144,13 @@ async function initializeTracking() {
     }
   } catch (error) {
     console.error('GazeTech: Error initializing webcam:', error);
+    cameraInitialized = false;
+    
+    // Notify failure
+    chrome.runtime.sendMessage({
+      action: 'cameraStatusUpdate',
+      isActive: false
+    }).catch(() => {});
   }
 }
 
@@ -143,6 +162,13 @@ async function trackFace() {
   }
 
   try {
+    // Check if video is playing and ready
+    if (!video.videoWidth || !video.videoHeight) {
+      console.log('Video not ready yet, retrying...');
+      requestAnimationFrame(trackFace);
+      return;
+    }
+
     // Process video frame
     const predictions = await faceMesh.estimateFaces({
       input: video,
@@ -187,6 +213,8 @@ async function trackFace() {
       if (settings.autoScroll) {
         handleAutoScroll(eyeData.gazePoint);
       }
+    } else {
+      console.log('No face detected');
     }
   } catch (error) {
     console.error('GazeTech: Error tracking face:', error);
@@ -204,49 +232,36 @@ function processEyeData(face) {
   // For this demo, we'll simulate eye tracking using head position as a proxy
   // and map it to screen coordinates
   
-  // In actual implementation, this would use much more sophisticated algorithms
-  // analyzing the iris position relative to the eye corners
-  
   // Get face position and landmarks
   const landmarks = face.scaledMesh;
   
   // Calculate gaze point (simplified for demo)
-  // In a real implementation, we would use iris tracking and gaze estimation
-  // For now, we'll just map head position to screen
-  
   // Get nose tip as reference point (landmark #1)
   const nose = landmarks[1];
   
   // Map nose position to screen coordinates with sensitivity adjustment
-  // Augmenter l'impact de la sensibilité
-  const sensitivity = eyeMovementSensitivity * 0.5; // Range 0.5 - 5
+  // Increased impact of sensitivity
+  const sensitivity = eyeMovementSensitivity * 0.7; // Adjusted from 0.5 for more responsiveness
   
   // Calculate relative position in video frame
   const relativeX = nose[0] / video.width;
   const relativeY = nose[1] / video.height;
   
   // Apply non-linear mapping for more precise control in center area
-  // Utilisation d'un mappage plus sensible pour détecter de plus petits mouvements
-  const mappedX = Math.pow(relativeX - 0.5, sensitivity > 3 ? 1 : 3) * sensitivity * 5 + 0.5;
-  const mappedY = Math.pow(relativeY - 0.5, sensitivity > 3 ? 1 : 3) * sensitivity * 5 + 0.5;
+  const mappedX = Math.pow(relativeX - 0.5, sensitivity > 3 ? 1 : 2.5) * sensitivity * 7 + 0.5;
+  const mappedY = Math.pow(relativeY - 0.5, sensitivity > 3 ? 1 : 2.5) * sensitivity * 7 + 0.5;
   
-  // Map to screen coordinates with some smoothing
+  // Map to screen coordinates
   const gazeX = window.innerWidth * mappedX;
   const gazeY = window.innerHeight * mappedY;
   
-  // Apply smoothing with previous position (ajustement de la fluidité)
-  // Moins de lissage pour des mouvements plus réactifs
-  const smoothFactor = 0.7; // Réduit par rapport à 0.8 précédent
+  // Apply smoothing with previous position (reduced smoothing for more responsive movement)
+  const smoothFactor = 0.5; // Reduced from 0.7 previously
   const smoothedX = lastGazePoint.x * smoothFactor + gazeX * (1 - smoothFactor);
   const smoothedY = lastGazePoint.y * smoothFactor + gazeY * (1 - smoothFactor);
   
   // Detect blinking (simplified for demo)
-  // In a real implementation, we would measure eye aspect ratio using landmarks
-  
-  // Simulate blink detection 
-  // (in real implementation, we would use eye landmarks to calculate eye openness)
-  // Augmenter légèrement la fréquence des clignements pour le test
-  const isBlinking = Math.random() < 0.02; // A bit higher than 0.01 for testing
+  const isBlinking = Math.random() < 0.03; // Slightly increased for testing
   
   const gazePoint = { x: smoothedX, y: smoothedY };
   lastGazePoint = gazePoint;
@@ -527,31 +542,63 @@ function cleanup() {
   if (webcamStream) {
     webcamStream.getTracks().forEach(track => track.stop());
     
-    // Notifier le background script que la caméra est inactive
+    // Notify the background script that camera is inactive
     chrome.runtime.sendMessage({
       action: 'cameraStatusUpdate',
       isActive: false
-    });
+    }).catch(() => {});
+    
+    cameraInitialized = false;
   }
   
-  if (cursor) {
+  if (cursor && document.body.contains(cursor)) {
     document.body.removeChild(cursor);
+    cursor = null;
   }
   
-  if (video) {
+  if (video && document.body.contains(video)) {
     document.body.removeChild(video);
+    video = null;
   }
   
-  if (canvas) {
+  if (canvas && document.body.contains(canvas)) {
     document.body.removeChild(canvas);
+    canvas = null;
   }
 }
 
-// Fonction pour restaurer la caméra lors du changement d'onglet
+// Function to restore camera between tab switches
 async function restoreCamera() {
-  if (isActive && !webcamStream) {
-    console.log('GazeTech: Restauration de la caméra après changement d\'onglet');
-    await initializeTracking();
+  console.log('GazeTech: Attempting to restore camera');
+  
+  if (isActive && !cameraInitialized) {
+    if (restoreCameraAttempts >= MAX_RESTORE_ATTEMPTS) {
+      console.log('GazeTech: Maximum camera restore attempts reached');
+      restoreCameraAttempts = 0;
+      return;
+    }
+    
+    restoreCameraAttempts++;
+    console.log(`GazeTech: Camera restore attempt ${restoreCameraAttempts}/${MAX_RESTORE_ATTEMPTS}`);
+    
+    try {
+      // Re-initialize UI elements if they were removed
+      if (!cursor || !video || !canvas) {
+        initializeUI();
+      }
+      
+      await initializeTracking();
+      restoreCameraAttempts = 0;
+      console.log('GazeTech: Camera restored successfully');
+    } catch (error) {
+      console.error('GazeTech: Failed to restore camera:', error);
+      
+      // Try again with a delay
+      setTimeout(restoreCamera, 1000);
+    }
+  } else if (cameraInitialized) {
+    console.log('GazeTech: Camera already initialized, no need to restore');
+    restoreCameraAttempts = 0;
   }
 }
 
@@ -584,32 +631,32 @@ async function initialize() {
       return true; // Required for asynchronous sendResponse
     }
 
-    // Nouveau gestionnaire pour démarrer le suivi des yeux après la calibration
+    // Handler for starting eye tracking after calibration
     if (request.action === 'startEyeTracking') {
-      // Mettre à jour les paramètres avec les nouvelles données de calibration
+      // Update parameters with new calibration data
       if (request.calibrationData) {
         calibrationData = request.calibrationData;
         isCalibrated = true;
       }
       
-      // Mettre à jour les paramètres si fournis
+      // Update settings if provided
       if (request.settings) {
         settings = { ...settings, ...request.settings };
       }
       
       isActive = true;
       
-      // S'assurer que l'interface est initialisée
+      // Ensure UI is initialized
       if (!cursor) {
         initializeUI();
       }
       
-      // Démarrer ou continuer le suivi si la webcam est déjà active
-      if (!webcamStream) {
+      // Start or continue tracking
+      if (!cameraInitialized) {
         initializeTracking().then(() => {
           sendResponse({ success: true });
         }).catch(error => {
-          console.error('Erreur lors du démarrage du suivi des yeux:', error);
+          console.error('Error starting eye tracking:', error);
           sendResponse({ success: false, error: error.message });
         });
       } else {
@@ -619,12 +666,12 @@ async function initialize() {
       return true; // Required for asynchronous sendResponse
     }
     
-    // Nouveau gestionnaire pour restaurer la caméra après changement d'onglet
+    // Handler for restoring camera after tab switch
     if (request.action === 'restoreCamera' && request.shouldRestore) {
       restoreCamera().then(() => {
         sendResponse({ success: true });
       }).catch(error => {
-        console.error('GazeTech: Erreur lors de la restauration de la caméra:', error);
+        console.error('GazeTech: Error restoring camera:', error);
         sendResponse({ success: false, error: error.message });
       });
       return true; // Required for asynchronous sendResponse
@@ -640,10 +687,24 @@ initialize().catch(error => {
 // Clean up when page is unloaded
 window.addEventListener('beforeunload', cleanup);
 
-// Détecter quand la page devient visible/invisible pour gérer la caméra
+// Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && isActive) {
-    // La page est à nouveau visible, restaurer la caméra si nécessaire
+    // Page is visible again, restore camera if needed
+    console.log('GazeTech: Page visible, checking camera status');
+    if (!cameraInitialized) {
+      restoreCamera();
+    }
+  } else if (document.visibilityState === 'hidden') {
+    console.log('GazeTech: Page hidden, camera will be preserved');
+    // We don't close the camera here, so it can be restored when page is visible again
+  }
+});
+
+// Handle focus/blur events as additional backup for visibility detection
+window.addEventListener('focus', () => {
+  console.log('GazeTech: Window focused');
+  if (isActive && !cameraInitialized) {
     restoreCamera();
   }
 });
