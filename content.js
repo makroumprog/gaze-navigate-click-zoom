@@ -31,6 +31,7 @@ let restoreCameraAttempts = 0;
 const MAX_RESTORE_ATTEMPTS = 30; // Augmenté encore le maximum de tentatives pour une persistance extrême
 let cameraRestorationInProgress = false;
 let cameraRestorationQueue = []; // Queue pour gérer plusieurs requêtes de restauration
+let permissionDenied = false; // New flag to track permission denial
 
 // Persistance de l'activation de la caméra
 let lastHeartbeatTime = 0;
@@ -295,6 +296,104 @@ function initializeUI() {
       }, 500);
     }, 3000);
   }, 1000);
+
+  // Ajouter un élément pour afficher les erreurs de permission caméra de façon plus visible
+  const permissionError = document.createElement('div');
+  permissionError.id = 'gazetech-permission-error';
+  permissionError.style.cssText = `
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(220, 53, 69, 0.9);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: Arial, sans-serif;
+    z-index: 9999999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: none;
+    transition: opacity 0.3s ease;
+    pointer-events: auto;
+    cursor: pointer;
+  `;
+  permissionError.textContent = "Erreur caméra: Permission denied";
+  permissionError.onclick = function() {
+    showPermissionHelp();
+  };
+  document.body.appendChild(permissionError);
+}
+
+// Nouvelle fonction pour afficher une aide sur les autorisations de caméra
+function showPermissionHelp() {
+  const helpModal = document.createElement('div');
+  helpModal.id = 'gazetech-permission-help';
+  helpModal.style.cssText = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: white;
+    color: #333;
+    padding: 25px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    z-index: 9999999;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    max-width: 85%;
+    width: 450px;
+    text-align: left;
+    line-height: 1.5;
+  `;
+  
+  helpModal.innerHTML = `
+    <h3 style="margin-top: 0; color: #c00; margin-bottom: 15px;">Accès à la caméra refusé</h3>
+    <p>GazeTech a besoin d'accéder à votre caméra pour le suivi oculaire. Pour autoriser l'accès :</p>
+    <ol style="padding-left: 20px; margin-bottom: 15px;">
+      <li>Cliquez sur l'icône de cadenas/info dans la barre d'adresse</li>
+      <li>Trouvez les paramètres de "Caméra" ou "Permissions du site"</li>
+      <li>Réglez l'autorisation de la caméra sur "Autoriser"</li>
+      <li>Rechargez la page</li>
+    </ol>
+    <p style="margin-bottom: 20px;">Si le problème persiste, vérifiez les autorisations de caméra dans les paramètres de votre navigateur.</p>
+    <button id="gazetech-permission-close" style="background: #0066cc; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer;">Fermer</button>
+    <button id="gazetech-permission-retry" style="background: #28a745; color: white; padding: 8px 15px; border: none; border-radius: 5px; margin-left: 10px; cursor: pointer;">Réessayer</button>
+  `;
+  
+  document.body.appendChild(helpModal);
+  
+  // Ajouter le gestionnaire pour le bouton de fermeture
+  document.getElementById('gazetech-permission-close').addEventListener('click', () => {
+    document.body.removeChild(helpModal);
+  });
+  
+  // Ajouter le gestionnaire pour le bouton de réessai
+  document.getElementById('gazetech-permission-retry').addEventListener('click', () => {
+    document.body.removeChild(helpModal);
+    permissionDenied = false; // Réinitialiser l'indicateur de refus
+    restoreCamera(true); // Tenter une nouvelle initialisation de la caméra
+  });
+  
+  // Ajouter un overlay semi-transparent
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 9999998;
+  `;
+  document.body.appendChild(overlay);
+  
+  // Fermer le modal si on clique sur l'overlay
+  overlay.addEventListener('click', () => {
+    document.body.removeChild(helpModal);
+    document.body.removeChild(overlay);
+  });
 }
 
 // Fonction pour mettre à jour l'indicateur d'état
@@ -336,6 +435,35 @@ function showNotification(message, type = 'info') {
       }
     }, 300);
   }, 3000);
+}
+
+// Afficher l'erreur de permission caméra
+function showCameraPermissionError(show = true) {
+  const errorElement = document.getElementById('gazetech-permission-error');
+  if (errorElement) {
+    if (show) {
+      errorElement.style.display = 'block';
+      // Animation légère pour attirer l'attention
+      setTimeout(() => {
+        errorElement.style.transform = 'translateX(-50%) translateY(5px)';
+        setTimeout(() => {
+          errorElement.style.transform = 'translateX(-50%) translateY(0)';
+        }, 200);
+      }, 100);
+    } else {
+      errorElement.style.display = 'none';
+    }
+  }
+  
+  // Si on montre l'erreur, mettre à jour le statut aussi
+  if (show) {
+    updateStatusIndicator(false);
+    
+    // Notifier l'extension du problème de permission
+    chrome.runtime.sendMessage({
+      action: 'cameraPermissionDenied'
+    }).catch(() => {});
+  }
 }
 
 // Fonction pour forcer la restauration de la caméra avec recul exponentiel
@@ -394,6 +522,12 @@ function restoreCamera(force = false) {
 async function initializeTracking(force = false) {
   if (cameraInitialized && !force) {
     console.log('Caméra déjà initialisée, ignorer');
+    return;
+  }
+  
+  if (permissionDenied && !force) {
+    console.log('Permission déjà refusée, ne pas réessayer sans action explicite');
+    showCameraPermissionError(true);
     return;
   }
   
@@ -462,6 +596,10 @@ async function initializeTracking(force = false) {
       },
       audio: false
     });
+    
+    // Cacher l'erreur de permission si elle était affichée
+    showCameraPermissionError(false);
+    permissionDenied = false;
     
     video.srcObject = webcamStream;
     
@@ -636,6 +774,14 @@ async function initializeTracking(force = false) {
     console.error('GazeTech: Erreur d\'initialisation webcam:', error);
     cameraInitialized = false;
     cameraRestorationInProgress = false;
+    
+    // Vérifier si l'erreur est une erreur de permission
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError' || 
+        error.message.includes('Permission') || error.message.includes('permission')) {
+      console.error('GazeTech: Permission caméra refusée');
+      permissionDenied = true;
+      showCameraPermissionError(true);
+    }
     
     // Mettre à jour l'indicateur de débogage
     const debugIndicator = document.getElementById('gazetech-debug');
