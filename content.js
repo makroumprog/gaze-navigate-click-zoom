@@ -11,6 +11,7 @@ let webcamStream = null;
 let faceMesh = null;
 let cameraInitialized = false;
 let tabInFocus = true; // Track if tab is in focus
+let forceKeepCameraOn = false; // Flag to force keeping camera on even when tab loses focus
 
 // Element refs
 let video = null;
@@ -27,21 +28,24 @@ let speechSynthesis = window.speechSynthesis;
 let calibrationData = null; // Pour stocker les données de calibration
 let eyeMovementSensitivity = 3; // Sensibilité des mouvements oculaires (ajustable)
 let restoreCameraAttempts = 0;
-const MAX_RESTORE_ATTEMPTS = 5; // Increased maximum attempts
+const MAX_RESTORE_ATTEMPTS = 10; // Increased maximum attempts for extreme persistence
 let cameraRestorationInProgress = false;
+let cameraRestorationQueue = []; // Queue for handling multiple restoration requests
 
 // Camera activation persistence
 let lastHeartbeatTime = 0;
-const HEARTBEAT_INTERVAL = 1000; // Every second
+const HEARTBEAT_INTERVAL = 500; // Every half-second for more reliability
 let pendingForceActivation = false;
+let lastRestorationAttemptTime = 0;
+const MIN_RESTORATION_INTERVAL = 500; // Minimum time between restoration attempts
 
 // Enhanced tracking parameters
 let headTracking = {
   xOffset: 0,
   yOffset: 0,
-  xScale: 2.5, // Further increased movement amplification
-  yScale: 2.5, // Further increased movement amplification
-  smoothFactor: 0.15 // Further reduced smoothing for more immediate response
+  xScale: 2.5, // Increased movement amplification
+  yScale: 2.5, // Increased movement amplification
+  smoothFactor: 0.15 // Reduced smoothing for more immediate response
 };
 
 // Debug mode to show more visual feedback
@@ -71,16 +75,16 @@ function loadSettings() {
   });
 }
 
-// Start heartbeat to keep camera active between tabs
+// Start heartbeat to keep camera active between tabs - improved version
 function startHeartbeat() {
   // Clear any existing interval
   if (window.heartbeatInterval) {
     clearInterval(window.heartbeatInterval);
   }
   
-  // Set up regular heartbeat to keep camera alive
+  // Set up regular heartbeat to keep camera alive - more frequent and with force check
   window.heartbeatInterval = setInterval(() => {
-    if (!document.hidden) {
+    if (!document.hidden || forceKeepCameraOn) {
       const now = Date.now();
       if (now - lastHeartbeatTime > HEARTBEAT_INTERVAL) {
         lastHeartbeatTime = now;
@@ -88,11 +92,13 @@ function startHeartbeat() {
         // Send heartbeat to background script
         chrome.runtime.sendMessage({
           action: 'heartbeat',
-          hasCameraActive: cameraInitialized
+          hasCameraActive: cameraInitialized,
+          requestForceCheck: !cameraInitialized // Request force check if camera not initialized
         }).then(response => {
           if (response && response.shouldHaveCamera && !cameraInitialized) {
             console.log("Heartbeat: Camera should be active, restoring");
-            restoreCamera(true);
+            // Pass force flag if background script says to
+            restoreCamera(response.forceRestore || false);
           }
         }).catch(error => {
           console.log("Heartbeat error:", error);
@@ -100,6 +106,19 @@ function startHeartbeat() {
       }
     }
   }, HEARTBEAT_INTERVAL);
+  
+  // Add a secondary "keepalive" interval that's even more aggressive
+  window.keepAliveInterval = setInterval(() => {
+    if (cameraInitialized && webcamStream) {
+      // Verify camera stream is actually active
+      const activeTracks = webcamStream.getVideoTracks().filter(track => track.readyState === 'live');
+      if (activeTracks.length === 0) {
+        console.log("KeepAlive: Camera stream lost, attempting to restore");
+        cameraInitialized = false;
+        restoreCamera(true);
+      }
+    }
+  }, 3000);
 }
 
 // Initialize UI elements with debug option
@@ -269,7 +288,7 @@ function showNotification(message, type = 'info') {
   }, 3000);
 }
 
-// Initialize webcam and face tracking with improved error handling
+// Initialize webcam and face tracking with improved error handling and restoration
 async function initializeTracking() {
   if (cameraInitialized) {
     console.log('Camera already initialized, skipping');
@@ -277,49 +296,106 @@ async function initializeTracking() {
   }
   
   if (cameraRestorationInProgress) {
-    console.log('Camera restoration already in progress, skipping');
+    console.log('Camera restoration already in progress, queueing request');
+    cameraRestorationQueue.push(Date.now());
+    if (cameraRestorationQueue.length > 3) {
+      // Too many requests in queue, force restart the process
+      cameraRestorationInProgress = false;
+    } else {
+      return;
+    }
+  }
+  
+  // Debounce restoration attempts
+  const now = Date.now();
+  if (now - lastRestorationAttemptTime < MIN_RESTORATION_INTERVAL) {
+    console.log('Restoration attempt too soon, delaying');
+    setTimeout(() => {
+      initializeTracking();
+    }, MIN_RESTORATION_INTERVAL);
     return;
   }
   
+  lastRestorationAttemptTime = now;
   cameraRestorationInProgress = true;
+  cameraRestorationQueue = [];
   updateStatusIndicator(false);
   
   // Log attempt to initialize
   console.log('GazeTech: Attempting to initialize webcam');
+  
+  // Clear any existing webcam resources 
+  if (webcamStream) {
+    try {
+      webcamStream.getTracks().forEach(track => {
+        track.stop();
+      });
+      webcamStream = null;
+    } catch (e) {
+      console.log('Error stopping existing tracks:', e);
+    }
+  }
 
   try {
     // Access webcam with more specific constraints for better performance
+    // And more persistence between tab switches
     webcamStream = await navigator.mediaDevices.getUserMedia({
       video: { 
-        width: 640, 
-        height: 480, 
+        width: { ideal: 640, min: 320 },
+        height: { ideal: 480, min: 240 }, 
         facingMode: "user",
-        frameRate: { ideal: 30, min: 20 }  // Higher framerate for better tracking
-      }
+        frameRate: { ideal: 30, min: 20 }  
+      },
+      audio: false
     });
     
     video.srcObject = webcamStream;
     
-    // Ensure video auto-plays
+    // Add persistence flags to the stream tracks
+    webcamStream.getTracks().forEach(track => {
+      // These are unofficial flags but might help in some browsers
+      track.contentHint = "persist";
+      track.enabled = true; // Ensure track is enabled
+    });
+    
+    // Ensure video auto-plays with better error recovery
     video.onloadedmetadata = async () => {
       try {
         await video.play();
       } catch (e) {
         console.error('GazeTech: Error playing video:', e);
+        // Try again after a short delay
+        setTimeout(() => {
+          video.play().catch(e => console.log('Second play attempt failed:', e));
+        }, 200);
       }
     };
     
-    // Wait for video to be ready with timeout
+    // Wait for video to be ready with timeout and multiple retry attempts
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Video play timeout'));
       }, 5000);
       
-      video.onloadedmetadata = () => {
-        clearTimeout(timeout);
+      let playAttempts = 0;
+      
+      const tryPlay = () => {
+        playAttempts++;
         video.play()
           .then(resolve)
-          .catch(reject);
+          .catch(e => {
+            if (playAttempts < 3) {
+              console.log(`Play attempt ${playAttempts} failed, retrying:`, e);
+              setTimeout(tryPlay, 300);
+            } else {
+              reject(e);
+            }
+          });
+      };
+      
+      video.onloadedmetadata = () => {
+        clearTimeout(timeout);
+        tryPlay();
       };
       
       video.onerror = (e) => {
@@ -364,6 +440,17 @@ async function initializeTracking() {
       video.play().catch(e => console.error('Failed to restart video', e));
     };
     
+    // Add event listener for tracks ending
+    webcamStream.getTracks().forEach(track => {
+      track.onended = () => {
+        console.log('GazeTech: Camera track ended, attempting to restore');
+        if (cameraInitialized) {
+          cameraInitialized = false;
+          restoreCamera(true);
+        }
+      };
+    });
+    
     // Load face mesh model if available
     if (window.facemesh) {
       try {
@@ -399,7 +486,11 @@ async function initializeTracking() {
       if (debugIndicator) {
         debugIndicator.textContent = "Waiting for face tracking to load...";
       }
-      // In a real extension, we would load the facemesh library here
+    }
+    
+    // Process any queued restoration requests
+    if (cameraRestorationQueue.length > 0) {
+      cameraRestorationQueue = []; // Clear queue
     }
   } catch (error) {
     console.error('GazeTech: Error initializing webcam:', error);
@@ -425,6 +516,18 @@ async function initializeTracking() {
       action: 'cameraStatusUpdate',
       isActive: false
     }).catch(() => {});
+    
+    // Process any queued restoration requests
+    if (cameraRestorationQueue.length > 0) {
+      const oldestRequest = cameraRestorationQueue.shift();
+      // If the request is recent, try again
+      if (Date.now() - oldestRequest < 5000) {
+        console.log('Retrying camera initialization from queue');
+        setTimeout(() => {
+          restoreCamera(true);
+        }, 1000);
+      }
+    }
   }
 }
 
@@ -760,411 +863,3 @@ function handleAutoZoom(gazePoint) {
           };
           
           element.setAttribute('data-original-style', JSON.stringify(originalStyle));
-          
-          // Apply zoom effect
-          element.style.transition = 'transform 0.3s ease-in-out';
-          element.style.transform = 'scale(1.5)';
-          element.style.zIndex = '9999';
-          
-          // Remove zoom effect after 5 seconds or when user looks away
-          setTimeout(() => {
-            if (element.hasAttribute('data-gazetech-zoomed')) {
-              removeZoom(element);
-            }
-          }, 5000);
-        }
-      }
-    }
-  } else {
-    // Reset if looking at a different element
-    removeZoomFromLastElement();
-  }
-  
-  // Update state
-  lastZoomElement = element;
-  lastGazeTime = now;
-}
-
-// Remove zoom effect from element
-function removeZoom(element) {
-  if (element.hasAttribute('data-original-style')) {
-    const originalStyle = JSON.parse(element.getAttribute('data-original-style'));
-    
-    element.style.transform = originalStyle.transform || '';
-    element.style.transition = originalStyle.transition || '';
-    element.style.zIndex = originalStyle.zIndex || '';
-    
-    element.removeAttribute('data-gazetech-zoomed');
-    element.removeAttribute('data-original-style');
-  }
-}
-
-// Remove zoom from last element
-function removeZoomFromLastElement() {
-  if (lastZoomElement && lastZoomElement.hasAttribute('data-gazetech-zoomed')) {
-    removeZoom(lastZoomElement);
-  }
-}
-
-// Handle text-to-speech for text elements
-function handleTextToSpeech(gazePoint) {
-  if (isSpeaking) return; // Don't interrupt current speech
-  
-  const now = Date.now();
-  
-  // Find element at gaze point
-  const element = document.elementFromPoint(gazePoint.x, gazePoint.y);
-  
-  if (element) {
-    // If still looking at the same text element for 2 seconds
-    if (element === lastTextElement && now - lastGazeTime > 2000) {
-      // Check if element contains readable text
-      if (isTextElement(element) && element.textContent.trim().length > 0) {
-        speakText(element.textContent.trim());
-      }
-    }
-  }
-  
-  // Update state
-  lastTextElement = element;
-}
-
-// Check if element contains readable text
-function isTextElement(element) {
-  const tagName = element.tagName.toLowerCase();
-  const textTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'div', 'li', 'a'];
-  
-  return textTags.includes(tagName);
-}
-
-// Use speech synthesis to read text
-function speakText(text) {
-  if (!speechSynthesis) return;
-  
-  // Stop any current speech
-  speechSynthesis.cancel();
-  
-  // Create new speech utterance
-  const utterance = new SpeechSynthesisUtterance(text);
-  
-  // Configure speech options
-  utterance.rate = settings.speechRate;
-  utterance.pitch = 1.0;
-  
-  // Set events
-  utterance.onstart = () => {
-    isSpeaking = true;
-  };
-  
-  utterance.onend = () => {
-    isSpeaking = false;
-  };
-  
-  utterance.onerror = () => {
-    isSpeaking = false;
-  };
-  
-  // Start speaking
-  speechSynthesis.speak(utterance);
-}
-
-// Handle navigation by looking at screen edges
-function handleEdgeNavigation(gazePoint) {
-  // Calculate edge zone width/height
-  const edgeSize = window.innerWidth * (settings.edgeSize / 100);
-  
-  // Check if gaze is at edges of screen
-  if (gazePoint.x < edgeSize) {
-    // Left edge - go back
-    if (Date.now() - lastGazeTime > 1500) {
-      window.history.back();
-      lastGazeTime = Date.now() + 2000; // Prevent immediate re-trigger
-    }
-  } else if (gazePoint.x > window.innerWidth - edgeSize) {
-    // Right edge - go forward
-    if (Date.now() - lastGazeTime > 1500) {
-      window.history.forward();
-      lastGazeTime = Date.now() + 2000; // Prevent immediate re-trigger
-    }
-  }
-}
-
-// Handle auto scrolling when looking at bottom of screen
-function handleAutoScroll(gazePoint) {
-  // Calculate bottom scroll zone height
-  const scrollZone = window.innerHeight * 0.2;
-  
-  // Start scrolling when looking at bottom of screen
-  if (gazePoint.y > window.innerHeight - scrollZone) {
-    if (!isScrolling) {
-      isScrolling = true;
-      startAutoScroll();
-    }
-  } else {
-    isScrolling = false;
-  }
-}
-
-// Start auto scrolling
-function startAutoScroll() {
-  if (!isScrolling) return;
-  
-  // Scroll speed based on settings (1-10)
-  const scrollStep = settings.scrollSpeed * 2;
-  
-  // Perform scroll
-  window.scrollBy(0, scrollStep);
-  
-  // Continue scrolling
-  setTimeout(() => {
-    if (isScrolling) {
-      startAutoScroll();
-    }
-  }, 30);
-}
-
-// Enhanced cleanup function to better preserve camera state
-function cleanup(force = false) {
-  if (webcamStream && force) {
-    webcamStream.getTracks().forEach(track => {
-      // Only stop tracks if forcing cleanup (e.g., page unload)
-      if (force) track.stop();
-    });
-    
-    if (force) {
-      // Notify the background script that camera is inactive
-      chrome.runtime.sendMessage({
-        action: 'cameraStatusUpdate',
-        isActive: false
-      }).catch(() => {});
-      
-      cameraInitialized = false;
-    }
-  }
-  
-  // Only remove UI elements if forcing cleanup
-  if (force) {
-    if (cursor && document.body.contains(cursor)) {
-      document.body.removeChild(cursor);
-      cursor = null;
-    }
-    
-    if (video && document.body.contains(video)) {
-      document.body.removeChild(video);
-      video = null;
-    }
-    
-    if (canvas && document.body.contains(canvas)) {
-      document.body.removeChild(canvas);
-      canvas = null;
-    }
-    
-    const debugIndicator = document.getElementById('gazetech-debug');
-    if (debugIndicator && document.body.contains(debugIndicator)) {
-      document.body.removeChild(debugIndicator);
-    }
-    
-    const statusIndicator = document.getElementById('gazetech-status');
-    if (statusIndicator && document.body.contains(statusIndicator)) {
-      document.body.removeChild(statusIndicator);
-    }
-    
-    const persistentMessage = document.getElementById('gazetech-persistent');
-    if (persistentMessage && document.body.contains(persistentMessage)) {
-      document.body.removeChild(persistentMessage);
-    }
-  }
-}
-
-// Function to restore camera between tab switches - now even more robust
-async function restoreCamera(force = false) {
-  console.log('GazeTech: Attempting to restore camera, force =', force);
-  
-  // Check if we should actually restore
-  if (!isActive) {
-    console.log('GazeTech: Extension not active, not restoring camera');
-    return;
-  }
-  
-  if (cameraInitialized && !force) {
-    console.log('GazeTech: Camera already initialized, checking if it\'s actually working');
-    
-    // Verify camera is really working
-    if (webcamStream && webcamStream.active && webcamStream.getTracks().some(track => track.readyState === 'live')) {
-      console.log('GazeTech: Camera is working, no need to restore');
-      updateStatusIndicator(true);
-      return;
-    } else {
-      console.log('GazeTech: Camera appears to be initialized but not working, will force restore');
-      // Clean up the non-working camera
-      cleanup(true);
-      cameraInitialized = false;
-    }
-  }
-  
-  if (cameraRestorationInProgress) {
-    console.log('GazeTech: Camera restoration already in progress');
-    return;
-  }
-  
-  // Show restoring notification
-  showNotification("Restauration de la caméra...", "info");
-  
-  // Attempt to initialize the camera
-  await initializeTracking();
-}
-
-// Set up event listeners for tab focus/blur
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    console.log('GazeTech: Tab hidden');
-    tabInFocus = false;
-    
-    // Notify background script
-    chrome.runtime.sendMessage({
-      action: 'tabBlurred'
-    }).catch(() => {});
-  } else {
-    console.log('GazeTech: Tab visible');
-    tabInFocus = true;
-    
-    // Notify background script
-    chrome.runtime.sendMessage({
-      action: 'tabFocused'
-    }).catch(() => {});
-    
-    // Check if camera should be restored
-    if (cameraInitialized) {
-      console.log('GazeTech: Camera already initialized, tab back in focus');
-    } else {
-      console.log('GazeTech: Camera not initialized, checking if it should be');
-      
-      // Check with background script
-      chrome.runtime.sendMessage({
-        action: 'checkCameraStatus',
-        forceCheck: true
-      }).then(response => {
-        if (response && response.shouldActivate) {
-          console.log('GazeTech: Background script says to activate camera');
-          restoreCamera(true);
-        } else {
-          console.log('GazeTech: Background script says not to activate camera');
-        }
-      }).catch(error => {
-        console.log('GazeTech: Error checking camera status:', error);
-      });
-    }
-  }
-});
-
-// Listen for messages from background script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'tabFocus') {
-    console.log('GazeTech: Received tabFocus message', request);
-    tabInFocus = true;
-    
-    // Check if camera needs to be restored
-    if (request.shouldRestoreCamera && (!cameraInitialized || request.forceActivate)) {
-      console.log('GazeTech: Tab focus with restore camera request');
-      restoreCamera(true);
-    }
-    
-    sendResponse({ success: true });
-    return true;
-  }
-  
-  if (request.action === 'tabBlur') {
-    console.log('GazeTech: Tab blur message');
-    tabInFocus = false;
-    sendResponse({ success: true });
-    return true;
-  }
-  
-  if (request.action === 'forceActivateCamera') {
-    console.log('GazeTech: Force activate camera message');
-    pendingForceActivation = true;
-    
-    // Don't immediately restore to avoid conflicts
-    setTimeout(() => {
-      if (pendingForceActivation && !cameraInitialized) {
-        restoreCamera(true);
-        pendingForceActivation = false;
-      }
-    }, 500);
-    
-    sendResponse({ success: true });
-    return true;
-  }
-  
-  if (request.action === 'syncCameraState') {
-    console.log('GazeTech: Sync camera state message', request);
-    
-    if (request.shouldBeActive && !cameraInitialized) {
-      console.log('GazeTech: Camera should be active but isn\'t, restoring');
-      restoreCamera(true);
-    }
-    
-    sendResponse({ success: true });
-    return true;
-  }
-  
-  if (request.action === 'checkAlive') {
-    // Heartbeat check from background script
-    const isWorking = cameraInitialized && webcamStream && webcamStream.active;
-    console.log('GazeTech: Alive check, camera working:', isWorking);
-    
-    if (!isWorking && request.forceRestore) {
-      console.log('GazeTech: Force restore requested in alive check');
-      restoreCamera(true);
-    }
-    
-    sendResponse({ isWorking });
-    return true;
-  }
-});
-
-// Initialize extension
-async function initialize() {
-  console.log('GazeTech: Initializing extension');
-  
-  // Load settings
-  await loadSettings();
-  
-  // Set up UI elements
-  initializeUI();
-  
-  // Check if camera should be initialized
-  chrome.runtime.sendMessage({
-    action: 'checkCameraStatus',
-    forceCheck: false
-  }).then(response => {
-    console.log('GazeTech: Camera status check response:', response);
-    
-    if (response && (response.shouldActivate || (response.wasTabActive && response.cameraActive))) {
-      console.log('GazeTech: Should initialize camera based on background state');
-      initializeTracking();
-    } else {
-      console.log('GazeTech: Not initializing camera based on background state');
-    }
-  }).catch(error => {
-    console.error('GazeTech: Error checking camera status:', error);
-    
-    // Fallback to direct initialization if communication fails
-    if (isActive) {
-      console.log('GazeTech: Falling back to direct camera initialization');
-      initializeTracking();
-    }
-  });
-  
-  // Start heartbeat to keep camera active between tabs
-  startHeartbeat();
-}
-
-// Listen for window unload to clean up properly
-window.addEventListener('beforeunload', () => {
-  console.log('GazeTech: Window unloading, cleaning up');
-  cleanup(false); // Don't force cleanup on unload to preserve camera state
-});
-
-// Start initialization
-initialize();
