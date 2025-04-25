@@ -1,4 +1,3 @@
-
 // Extension background script
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -40,6 +39,41 @@ let activeCameraTabs = new Set();
 let lastCameraActivationTime = 0;
 // Store tab focus state to handle tab switching better
 let tabFocusState = {};
+// Force camera sync across tabs every few seconds
+let cameraSyncInterval = null;
+
+// Start global sync interval for camera state
+function startCameraSyncInterval() {
+  if (cameraSyncInterval) {
+    clearInterval(cameraSyncInterval);
+  }
+  
+  cameraSyncInterval = setInterval(() => {
+    if (cameraActive) {
+      // Sync camera state across all active tabs
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+          // Skip chrome:// and other restricted URLs
+          if (!tab.url.match(/^(chrome:\/\/|chrome-extension:\/\/|file:\/\/)/)) {
+            try {
+              chrome.tabs.sendMessage(tab.id, {
+                action: 'syncCameraState',
+                shouldBeActive: activeCameraTabs.has(tab.id) || (tab.active && cameraActive)
+              }).catch(() => {
+                // Tab might not have content script yet
+              });
+            } catch (e) {
+              // Ignore errors for tabs without content script
+            }
+          }
+        });
+      });
+    }
+  }, 2000); // Check every 2 seconds
+}
+
+// Start the sync interval immediately
+startCameraSyncInterval();
 
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -81,16 +115,61 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   
+  // Heartbeat handler to keep camera state in sync
+  if (request.action === 'heartbeat') {
+    const tabHasCamera = sender.tab && activeCameraTabs.has(sender.tab.id);
+    
+    // If tab says it has camera but background doesn't know, update background
+    if (request.hasCameraActive && sender.tab && !tabHasCamera) {
+      activeCameraTabs.add(sender.tab.id);
+      cameraActive = true;
+      console.log("Heartbeat: Adding tab to active camera tabs:", sender.tab.id);
+    }
+    
+    // If tab says it doesn't have camera but background thinks it does, sync
+    if (!request.hasCameraActive && tabHasCamera) {
+      // This might be a false negative during page transitions, so don't remove yet
+      // Just notify the tab that it should have camera active
+      console.log("Heartbeat: Tab should have camera but doesn't:", sender.tab.id);
+      sendResponse({
+        shouldHaveCamera: true,
+        globalCameraActive: cameraActive
+      });
+      return true;
+    }
+    
+    sendResponse({
+      shouldHaveCamera: tabHasCamera || (sender.tab && sender.tab.active && cameraActive),
+      globalCameraActive: cameraActive
+    });
+    return true;
+  }
+  
   // New handler for tabs requesting camera status
   if (request.action === 'checkCameraStatus') {
     const tabHasCamera = sender.tab && activeCameraTabs.has(sender.tab.id);
-    const shouldActivate = cameraActive && (!tabHasCamera || request.forceCheck);
+    const shouldActivate = cameraActive && (sender.tab && sender.tab.active && !tabHasCamera) || request.forceCheck;
     
     sendResponse({ 
       cameraActive: cameraActive,
       shouldActivate: shouldActivate,
-      wasTabActive: tabFocusState[sender.tab?.id] || false
+      wasTabActive: tabFocusState[sender.tab?.id] || false,
+      activeTabID: activeTabId,
+      currentTabID: sender.tab?.id
     });
+    return true;
+  }
+  
+  // Handle forced camera activation
+  if (request.action === 'forceCameraActivation') {
+    if (sender.tab) {
+      cameraActive = true;
+      activeCameraTabs.add(sender.tab.id);
+      activeTabId = sender.tab.id;
+      tabFocusState[sender.tab.id] = true;
+      console.log("Forced camera activation in tab:", sender.tab.id);
+    }
+    sendResponse({ success: true });
     return true;
   }
   
@@ -145,6 +224,19 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
       
       activeTabId = activeInfo.tabId;
       tabFocusState[activeInfo.tabId] = true;
+      
+      // Force camera activation in this tab if needed
+      if (cameraActive && !activeCameraTabs.has(activeInfo.tabId)) {
+        // Wait a moment for tab to fully activate
+        setTimeout(() => {
+          try {
+            chrome.tabs.sendMessage(activeInfo.tabId, {
+              action: 'forceActivateCamera',
+              previousTabId: activeTabId
+            }).catch(() => {});
+          } catch (e) {}
+        }, 500);
+      }
     } catch (e) {
       console.error("Error sending restore camera message:", e);
     }
@@ -175,14 +267,27 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       
       // Try to restore camera with a delay to allow content script to load
       setTimeout(() => {
-        chrome.tabs.sendMessage(tabId, {
-          action: 'tabFocus',
-          shouldRestoreCamera: true,
-          wasActive: tabFocusState[tabId] || false
-        }).catch(() => {
-          console.log(`Tab ${tabId} updated but couldn't restore camera`);
-        });
+        try {
+          chrome.tabs.sendMessage(tabId, {
+            action: 'tabFocus',
+            shouldRestoreCamera: true,
+            wasActive: tabFocusState[tabId] || false
+          }).catch(() => {
+            console.log(`Tab ${tabId} updated but couldn't restore camera`);
+          });
+        } catch (e) {
+          console.log(`Error sending message to tab ${tabId}:`, e);
+        }
       }, 500); // Short delay to allow content script to initialize
+      
+      // Try again after a longer delay as a fallback
+      setTimeout(() => {
+        try {
+          chrome.tabs.sendMessage(tabId, {
+            action: 'forceActivateCamera'
+          }).catch(() => {});
+        } catch (e) {}
+      }, 2000);
     }
   }
 });
@@ -239,8 +344,22 @@ setInterval(() => {
         }
       });
     }
+    
+    // Get current active tab and ensure it has camera if global state is active
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs.length > 0 && tabs[0].id) {
+        const currentTab = tabs[0].id;
+        if (!activeCameraTabs.has(currentTab)) {
+          try {
+            chrome.tabs.sendMessage(currentTab, {
+              action: 'forceActivateCamera'
+            }).catch(() => {});
+          } catch (e) {}
+        }
+      }
+    });
   }
-}, 5000); // Check more frequently (every 5 seconds)
+}, 3000); // Check more frequently (every 3 seconds)
 
 // Add event listener for window focus changes
 chrome.windows.onFocusChanged.addListener((windowId) => {
@@ -253,10 +372,22 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
           activeTabId = currentTabId;
           
           // Try to restore camera in current tab
-          chrome.tabs.sendMessage(currentTabId, {
-            action: 'tabFocus',
-            shouldRestoreCamera: true
-          }).catch(() => {});
+          try {
+            chrome.tabs.sendMessage(currentTabId, {
+              action: 'tabFocus',
+              shouldRestoreCamera: true,
+              forceActivate: true
+            }).catch(() => {});
+          } catch (e) {}
+          
+          // Try again after a short delay
+          setTimeout(() => {
+            try {
+              chrome.tabs.sendMessage(currentTabId, {
+                action: 'forceActivateCamera'
+              }).catch(() => {});
+            } catch (e) {}
+          }, 1000);
         }
       }
     });

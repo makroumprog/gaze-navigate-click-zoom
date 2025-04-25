@@ -30,13 +30,18 @@ let restoreCameraAttempts = 0;
 const MAX_RESTORE_ATTEMPTS = 5; // Increased maximum attempts
 let cameraRestorationInProgress = false;
 
+// Camera activation persistence
+let lastHeartbeatTime = 0;
+const HEARTBEAT_INTERVAL = 1000; // Every second
+let pendingForceActivation = false;
+
 // Enhanced tracking parameters
 let headTracking = {
   xOffset: 0,
   yOffset: 0,
-  xScale: 2.0, // Further increased movement amplification
-  yScale: 2.0, // Further increased movement amplification
-  smoothFactor: 0.2 // Further reduced smoothing for more immediate response
+  xScale: 2.5, // Further increased movement amplification
+  yScale: 2.5, // Further increased movement amplification
+  smoothFactor: 0.15 // Further reduced smoothing for more immediate response
 };
 
 // Debug mode to show more visual feedback
@@ -55,15 +60,46 @@ function loadSettings() {
       if (settings.gazeSensitivity) {
         eyeMovementSensitivity = settings.gazeSensitivity;
         // Update tracking scaling based on sensitivity - more responsive
-        headTracking.xScale = 1.5 + (eyeMovementSensitivity * 0.4); // More dynamic range
-        headTracking.yScale = 1.5 + (eyeMovementSensitivity * 0.4);
+        headTracking.xScale = 1.8 + (eyeMovementSensitivity * 0.5); // More dynamic range
+        headTracking.yScale = 1.8 + (eyeMovementSensitivity * 0.5);
         // Adjust smoothing to be more responsive at high sensitivity
-        headTracking.smoothFactor = Math.max(0.05, 0.3 - (eyeMovementSensitivity * 0.04));
+        headTracking.smoothFactor = Math.max(0.05, 0.25 - (eyeMovementSensitivity * 0.03));
       }
       
       resolve(settings);
     });
   });
+}
+
+// Start heartbeat to keep camera active between tabs
+function startHeartbeat() {
+  // Clear any existing interval
+  if (window.heartbeatInterval) {
+    clearInterval(window.heartbeatInterval);
+  }
+  
+  // Set up regular heartbeat to keep camera alive
+  window.heartbeatInterval = setInterval(() => {
+    if (!document.hidden) {
+      const now = Date.now();
+      if (now - lastHeartbeatTime > HEARTBEAT_INTERVAL) {
+        lastHeartbeatTime = now;
+        
+        // Send heartbeat to background script
+        chrome.runtime.sendMessage({
+          action: 'heartbeat',
+          hasCameraActive: cameraInitialized
+        }).then(response => {
+          if (response && response.shouldHaveCamera && !cameraInitialized) {
+            console.log("Heartbeat: Camera should be active, restoring");
+            restoreCamera(true);
+          }
+        }).catch(error => {
+          console.log("Heartbeat error:", error);
+        });
+      }
+    }
+  }, HEARTBEAT_INTERVAL);
 }
 
 // Initialize UI elements with debug option
@@ -100,6 +136,9 @@ function initializeUI() {
     pointer-events: none;
     z-index: -1;
   `;
+  video.autoplay = true;
+  video.playsInline = true; // Important for iOS
+  video.muted = true; // Required for autoplay in some browsers
   document.body.appendChild(video);
 
   // Create canvas for processing (hidden)
@@ -155,6 +194,38 @@ function initializeUI() {
     display: ${debugMode ? 'block' : 'none'};
   `;
   document.body.appendChild(statusIndicator);
+  
+  // Added persistent camera message
+  const persistentMessage = document.createElement('div');
+  persistentMessage.id = 'gazetech-persistent';
+  persistentMessage.style.cssText = `
+    position: fixed;
+    top: 40px;
+    right: 10px;
+    background-color: rgba(50, 205, 50, 0.9);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: Arial, sans-serif;
+    z-index: 999999;
+    display: none;
+    transition: opacity 0.3s ease;
+  `;
+  persistentMessage.textContent = "Caméra persistante activée";
+  document.body.appendChild(persistentMessage);
+  
+  // Show persistent message briefly
+  setTimeout(() => {
+    persistentMessage.style.display = 'block';
+    setTimeout(() => {
+      persistentMessage.style.opacity = '0';
+      setTimeout(() => {
+        persistentMessage.style.display = 'none';
+        persistentMessage.style.opacity = '1';
+      }, 500);
+    }, 3000);
+  }, 1000);
 }
 
 // Function to update the status indicator
@@ -166,6 +237,36 @@ function updateStatusIndicator(active) {
       ? '0 0 10px rgba(0, 255, 0, 0.7)' 
       : '0 0 5px rgba(255, 0, 0, 0.7)';
   }
+}
+
+// Show temporary notification
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 40px;
+    right: 10px;
+    background-color: ${type === 'error' ? 'rgba(220, 53, 69, 0.9)' : 'rgba(25, 135, 84, 0.9)'};
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    z-index: 999999;
+    transition: opacity 0.3s ease;
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  
+  // Remove notification after a few seconds
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    setTimeout(() => {
+      if (document.body.contains(notification)) {
+        document.body.removeChild(notification);
+      }
+    }, 300);
+  }, 3000);
 }
 
 // Initialize webcam and face tracking with improved error handling
@@ -198,6 +299,15 @@ async function initializeTracking() {
     });
     
     video.srcObject = webcamStream;
+    
+    // Ensure video auto-plays
+    video.onloadedmetadata = async () => {
+      try {
+        await video.play();
+      } catch (e) {
+        console.error('GazeTech: Error playing video:', e);
+      }
+    };
     
     // Wait for video to be ready with timeout
     await new Promise((resolve, reject) => {
@@ -236,6 +346,9 @@ async function initializeTracking() {
     
     // Update status indicator
     updateStatusIndicator(true);
+    
+    // Show notification
+    showNotification("Caméra activée", "info");
     
     // Notify the background script that camera is active
     chrome.runtime.sendMessage({
@@ -304,6 +417,9 @@ async function initializeTracking() {
     // Update status indicator
     updateStatusIndicator(false);
     
+    // Show notification
+    showNotification("Erreur caméra: " + error.message, "error");
+    
     // Notify failure
     chrome.runtime.sendMessage({
       action: 'cameraStatusUpdate',
@@ -315,12 +431,6 @@ async function initializeTracking() {
 // Main tracking function - completely revised for better responsiveness
 async function trackFace() {
   if (!isActive || !faceMesh) {
-    requestAnimationFrame(trackFace);
-    return;
-  }
-
-  // Skip processing if tab is not in focus to save resources
-  if (!tabInFocus) {
     requestAnimationFrame(trackFace);
     return;
   }
@@ -858,6 +968,11 @@ function cleanup(force = false) {
     if (statusIndicator && document.body.contains(statusIndicator)) {
       document.body.removeChild(statusIndicator);
     }
+    
+    const persistentMessage = document.getElementById('gazetech-persistent');
+    if (persistentMessage && document.body.contains(persistentMessage)) {
+      document.body.removeChild(persistentMessage);
+    }
   }
 }
 
@@ -891,3 +1006,165 @@ async function restoreCamera(force = false) {
     console.log('GazeTech: Camera restoration already in progress');
     return;
   }
+  
+  // Show restoring notification
+  showNotification("Restauration de la caméra...", "info");
+  
+  // Attempt to initialize the camera
+  await initializeTracking();
+}
+
+// Set up event listeners for tab focus/blur
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    console.log('GazeTech: Tab hidden');
+    tabInFocus = false;
+    
+    // Notify background script
+    chrome.runtime.sendMessage({
+      action: 'tabBlurred'
+    }).catch(() => {});
+  } else {
+    console.log('GazeTech: Tab visible');
+    tabInFocus = true;
+    
+    // Notify background script
+    chrome.runtime.sendMessage({
+      action: 'tabFocused'
+    }).catch(() => {});
+    
+    // Check if camera should be restored
+    if (cameraInitialized) {
+      console.log('GazeTech: Camera already initialized, tab back in focus');
+    } else {
+      console.log('GazeTech: Camera not initialized, checking if it should be');
+      
+      // Check with background script
+      chrome.runtime.sendMessage({
+        action: 'checkCameraStatus',
+        forceCheck: true
+      }).then(response => {
+        if (response && response.shouldActivate) {
+          console.log('GazeTech: Background script says to activate camera');
+          restoreCamera(true);
+        } else {
+          console.log('GazeTech: Background script says not to activate camera');
+        }
+      }).catch(error => {
+        console.log('GazeTech: Error checking camera status:', error);
+      });
+    }
+  }
+});
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'tabFocus') {
+    console.log('GazeTech: Received tabFocus message', request);
+    tabInFocus = true;
+    
+    // Check if camera needs to be restored
+    if (request.shouldRestoreCamera && (!cameraInitialized || request.forceActivate)) {
+      console.log('GazeTech: Tab focus with restore camera request');
+      restoreCamera(true);
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  if (request.action === 'tabBlur') {
+    console.log('GazeTech: Tab blur message');
+    tabInFocus = false;
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  if (request.action === 'forceActivateCamera') {
+    console.log('GazeTech: Force activate camera message');
+    pendingForceActivation = true;
+    
+    // Don't immediately restore to avoid conflicts
+    setTimeout(() => {
+      if (pendingForceActivation && !cameraInitialized) {
+        restoreCamera(true);
+        pendingForceActivation = false;
+      }
+    }, 500);
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  if (request.action === 'syncCameraState') {
+    console.log('GazeTech: Sync camera state message', request);
+    
+    if (request.shouldBeActive && !cameraInitialized) {
+      console.log('GazeTech: Camera should be active but isn\'t, restoring');
+      restoreCamera(true);
+    }
+    
+    sendResponse({ success: true });
+    return true;
+  }
+  
+  if (request.action === 'checkAlive') {
+    // Heartbeat check from background script
+    const isWorking = cameraInitialized && webcamStream && webcamStream.active;
+    console.log('GazeTech: Alive check, camera working:', isWorking);
+    
+    if (!isWorking && request.forceRestore) {
+      console.log('GazeTech: Force restore requested in alive check');
+      restoreCamera(true);
+    }
+    
+    sendResponse({ isWorking });
+    return true;
+  }
+});
+
+// Initialize extension
+async function initialize() {
+  console.log('GazeTech: Initializing extension');
+  
+  // Load settings
+  await loadSettings();
+  
+  // Set up UI elements
+  initializeUI();
+  
+  // Check if camera should be initialized
+  chrome.runtime.sendMessage({
+    action: 'checkCameraStatus',
+    forceCheck: false
+  }).then(response => {
+    console.log('GazeTech: Camera status check response:', response);
+    
+    if (response && (response.shouldActivate || (response.wasTabActive && response.cameraActive))) {
+      console.log('GazeTech: Should initialize camera based on background state');
+      initializeTracking();
+    } else {
+      console.log('GazeTech: Not initializing camera based on background state');
+    }
+  }).catch(error => {
+    console.error('GazeTech: Error checking camera status:', error);
+    
+    // Fallback to direct initialization if communication fails
+    if (isActive) {
+      console.log('GazeTech: Falling back to direct camera initialization');
+      initializeTracking();
+    }
+  });
+  
+  // Start heartbeat to keep camera active between tabs
+  startHeartbeat();
+}
+
+// Listen for window unload to clean up properly
+window.addEventListener('beforeunload', () => {
+  console.log('GazeTech: Window unloading, cleaning up');
+  cleanup(false); // Don't force cleanup on unload to preserve camera state
+});
+
+// Start initialization
+initialize();
