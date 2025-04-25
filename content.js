@@ -11,7 +11,7 @@ let webcamStream = null;
 let faceMesh = null;
 let cameraInitialized = false;
 let tabInFocus = true; // Track if tab is in focus
-let forceKeepCameraOn = false; // Flag to force keeping camera on even when tab loses focus
+let forceKeepCameraOn = true; // Flag to force keeping camera on even when tab loses focus
 
 // Element refs
 let video = null;
@@ -26,30 +26,36 @@ let isScrolling = false;
 let isSpeaking = false;
 let speechSynthesis = window.speechSynthesis;
 let calibrationData = null; // Pour stocker les données de calibration
-let eyeMovementSensitivity = 3; // Sensibilité des mouvements oculaires (ajustable)
+let eyeMovementSensitivity = 7; // Increased sensitivity (was 3) for more responsive eye movements
 let restoreCameraAttempts = 0;
-const MAX_RESTORE_ATTEMPTS = 10; // Increased maximum attempts for extreme persistence
+const MAX_RESTORE_ATTEMPTS = 20; // Increased maximum attempts for extreme persistence
 let cameraRestorationInProgress = false;
 let cameraRestorationQueue = []; // Queue for handling multiple restoration requests
 
 // Camera activation persistence
 let lastHeartbeatTime = 0;
-const HEARTBEAT_INTERVAL = 500; // Every half-second for more reliability
+const HEARTBEAT_INTERVAL = 300; // More frequent heartbeats for better reliability
 let pendingForceActivation = false;
 let lastRestorationAttemptTime = 0;
-const MIN_RESTORATION_INTERVAL = 500; // Minimum time between restoration attempts
+const MIN_RESTORATION_INTERVAL = 300; // Reduced minimum time between restoration attempts
 
 // Enhanced tracking parameters
 let headTracking = {
   xOffset: 0,
   yOffset: 0,
-  xScale: 2.5, // Increased movement amplification
-  yScale: 2.5, // Increased movement amplification
-  smoothFactor: 0.15 // Reduced smoothing for more immediate response
+  xScale: 3.5, // Significantly increased movement amplification (was 2.5)
+  yScale: 3.5, // Significantly increased movement amplification (was 2.5)
+  smoothFactor: 0.10 // Further reduced smoothing for even more immediate response (was 0.15)
 };
 
 // Debug mode to show more visual feedback
 let debugMode = true;
+
+// Track if calibration has just completed
+let justCalibrated = false;
+
+// Flag to force extreme camera persistence
+let forceCameraPersistence = true;
 
 // Load settings from storage
 function loadSettings() {
@@ -64,10 +70,10 @@ function loadSettings() {
       if (settings.gazeSensitivity) {
         eyeMovementSensitivity = settings.gazeSensitivity;
         // Update tracking scaling based on sensitivity - more responsive
-        headTracking.xScale = 1.8 + (eyeMovementSensitivity * 0.5); // More dynamic range
-        headTracking.yScale = 1.8 + (eyeMovementSensitivity * 0.5);
+        headTracking.xScale = 2.5 + (eyeMovementSensitivity * 0.7); // More dynamic range for cursor movement
+        headTracking.yScale = 2.5 + (eyeMovementSensitivity * 0.7);
         // Adjust smoothing to be more responsive at high sensitivity
-        headTracking.smoothFactor = Math.max(0.05, 0.25 - (eyeMovementSensitivity * 0.03));
+        headTracking.smoothFactor = Math.max(0.03, 0.25 - (eyeMovementSensitivity * 0.03));
       }
       
       resolve(settings);
@@ -82,7 +88,7 @@ function startHeartbeat() {
     clearInterval(window.heartbeatInterval);
   }
   
-  // Set up regular heartbeat to keep camera alive - more frequent and with force check
+  // Set up regular heartbeat to keep camera alive - more frequent
   window.heartbeatInterval = setInterval(() => {
     if (!document.hidden || forceKeepCameraOn) {
       const now = Date.now();
@@ -93,12 +99,18 @@ function startHeartbeat() {
         chrome.runtime.sendMessage({
           action: 'heartbeat',
           hasCameraActive: cameraInitialized,
-          requestForceCheck: !cameraInitialized // Request force check if camera not initialized
+          requestForceCheck: !cameraInitialized || forceCameraPersistence // Always request force check
         }).then(response => {
           if (response && response.shouldHaveCamera && !cameraInitialized) {
             console.log("Heartbeat: Camera should be active, restoring");
             // Pass force flag if background script says to
-            restoreCamera(response.forceRestore || false);
+            restoreCamera(true);
+          }
+          
+          // Update persistent flag from background
+          if (response && response.forcePersistence) {
+            forceCameraPersistence = true;
+            forceKeepCameraOn = true;
           }
         }).catch(error => {
           console.log("Heartbeat error:", error);
@@ -117,6 +129,22 @@ function startHeartbeat() {
         cameraInitialized = false;
         restoreCamera(true);
       }
+    } else if (forceCameraPersistence) {
+      // If camera should be active but isn't, restore it
+      restoreCamera(true);
+    }
+  }, 1000);
+  
+  // Add a third emergency camera check - even more aggressive
+  window.emergencyCameraInterval = setInterval(() => {
+    if (forceCameraPersistence || justCalibrated) {
+      // Force restore camera anyway, regardless of state
+      restoreCamera(true);
+      
+      // Reset calibration flag after a while
+      if (justCalibrated && Date.now() - lastRestorationAttemptTime > 10000) {
+        justCalibrated = false;
+      }
     }
   }, 3000);
 }
@@ -128,17 +156,17 @@ function initializeUI() {
   cursor.id = 'gazetech-cursor';
   cursor.style.cssText = `
     position: fixed;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    background-color: rgba(44, 123, 229, 0.6);
+    background-color: rgba(44, 123, 229, 0.7);
     border: 3px solid rgba(44, 123, 229, 0.9);
     pointer-events: none;
     z-index: 999999;
     transform: translate(-50%, -50%);
     box-shadow: 0 0 15px rgba(44, 123, 229, 0.7);
     display: ${isActive ? 'block' : 'none'};
-    transition: transform 0.05s ease-out, background-color 0.2s; 
+    transition: transform 0.03s ease-out, background-color 0.2s; 
   `;
   document.body.appendChild(cursor);
 
@@ -158,6 +186,7 @@ function initializeUI() {
   video.autoplay = true;
   video.playsInline = true; // Important for iOS
   video.muted = true; // Required for autoplay in some browsers
+  video.setAttribute('playsinline', ''); // Additional for iOS
   document.body.appendChild(video);
 
   // Create canvas for processing (hidden)
@@ -288,27 +317,84 @@ function showNotification(message, type = 'info') {
   }, 3000);
 }
 
+// Function to force restore camera with exponential backoff
+function restoreCamera(force = false) {
+  console.log("Attempting to restore camera, force:", force);
+  
+  if (cameraInitialized && !force) {
+    console.log("Camera already initialized, no need to restore");
+    return;
+  }
+
+  // Use exponential backoff to prevent too many rapid restoration attempts
+  const now = Date.now();
+  if (now - lastRestorationAttemptTime < MIN_RESTORATION_INTERVAL && !force) {
+    console.log("Too soon to try restoration again");
+    return;
+  }
+  
+  lastRestorationAttemptTime = now;
+  restoreCameraAttempts++;
+  
+  // Only allow a certain number of restoration attempts to prevent browser lockups
+  if (restoreCameraAttempts > MAX_RESTORE_ATTEMPTS && !force) {
+    console.log("Maximum restore attempts reached, giving up");
+    return;
+  }
+  
+  // Show notification that we're restoring camera
+  showNotification("Restauration de la caméra...");
+  
+  // Force initialize tracking with the force flag
+  initializeTracking(force);
+  
+  // Schedule additional restoration attempts
+  if (force && !cameraInitialized) {
+    // Try again after delays with exponential backoff
+    [500, 1000, 2000, 4000].forEach(delay => {
+      setTimeout(() => {
+        if (!cameraInitialized) {
+          initializeTracking(true);
+        }
+      }, delay);
+    });
+  }
+}
+
 // Initialize webcam and face tracking with improved error handling and restoration
-async function initializeTracking() {
-  if (cameraInitialized) {
+async function initializeTracking(force = false) {
+  if (cameraInitialized && !force) {
     console.log('Camera already initialized, skipping');
     return;
   }
   
-  if (cameraRestorationInProgress) {
+  if (cameraRestorationInProgress && !force) {
     console.log('Camera restoration already in progress, queueing request');
     cameraRestorationQueue.push(Date.now());
-    if (cameraRestorationQueue.length > 3) {
-      // Too many requests in queue, force restart the process
-      cameraRestorationInProgress = false;
-    } else {
-      return;
+    return;
+  }
+  
+  // For extreme persistence
+  if (force) {
+    // Kill any existing restoration in progress
+    cameraRestorationInProgress = false;
+    
+    // Clear existing webcam resources first
+    if (webcamStream) {
+      try {
+        webcamStream.getTracks().forEach(track => {
+          track.stop();
+        });
+        webcamStream = null;
+      } catch (e) {
+        console.log('Error stopping existing tracks:', e);
+      }
     }
   }
   
   // Debounce restoration attempts
   const now = Date.now();
-  if (now - lastRestorationAttemptTime < MIN_RESTORATION_INTERVAL) {
+  if (now - lastRestorationAttemptTime < MIN_RESTORATION_INTERVAL && !force) {
     console.log('Restoration attempt too soon, delaying');
     setTimeout(() => {
       initializeTracking();
@@ -322,7 +408,7 @@ async function initializeTracking() {
   updateStatusIndicator(false);
   
   // Log attempt to initialize
-  console.log('GazeTech: Attempting to initialize webcam');
+  console.log('GazeTech: Attempting to initialize webcam with force =', force);
   
   // Clear any existing webcam resources 
   if (webcamStream) {
@@ -337,8 +423,7 @@ async function initializeTracking() {
   }
 
   try {
-    // Access webcam with more specific constraints for better performance
-    // And more persistence between tab switches
+    // Access webcam with more specific constraints and persistence flags
     webcamStream = await navigator.mediaDevices.getUserMedia({
       video: { 
         width: { ideal: 640, min: 320 },
@@ -384,7 +469,7 @@ async function initializeTracking() {
         video.play()
           .then(resolve)
           .catch(e => {
-            if (playAttempts < 3) {
+            if (playAttempts < 5) { // Increased from 3
               console.log(`Play attempt ${playAttempts} failed, retrying:`, e);
               setTimeout(tryPlay, 300);
             } else {
@@ -407,10 +492,14 @@ async function initializeTracking() {
     cameraInitialized = true;
     cameraRestorationInProgress = false;
     
+    // Reset restoration attempts counter on successful initialization
+    restoreCameraAttempts = 0;
+    
     // Show debug info
     const debugIndicator = document.getElementById('gazetech-debug');
     if (debugIndicator) {
       debugIndicator.textContent = "Camera initialized. Waiting for face detection...";
+      debugIndicator.style.display = "block";
       setTimeout(() => {
         if (debugMode) {
           debugIndicator.style.opacity = "0.7";
@@ -429,7 +518,8 @@ async function initializeTracking() {
     // Notify the background script that camera is active
     chrome.runtime.sendMessage({
       action: 'cameraStatusUpdate',
-      isActive: true
+      isActive: true,
+      requiresPersistence: forceKeepCameraOn || forceCameraPersistence || justCalibrated
     }).catch(error => {
       console.log("Failed to notify background script about camera status:", error);
     });
@@ -457,7 +547,7 @@ async function initializeTracking() {
         faceMesh = await facemesh.load({
           maxFaces: 1,
           refineLandmarks: true,
-          detectionConfidence: 0.8,
+          detectionConfidence: 0.9,  // Increased for better accuracy
           predictIrises: true  // Better eye tracking by including iris prediction
         });
         
@@ -467,17 +557,14 @@ async function initializeTracking() {
         
         if (debugIndicator) {
           debugIndicator.textContent = "Face tracking active";
-          setTimeout(() => {
-            if (!debugMode) {
-              debugIndicator.style.display = "none";
-            }
-          }, 2000);
+          debugIndicator.style.display = "block";
         }
       } catch (error) {
         console.error('GazeTech: Failed to load face mesh:', error);
         if (debugIndicator) {
           debugIndicator.textContent = "Failed to load face tracking";
           debugIndicator.style.backgroundColor = "rgba(255, 0, 0, 0.7)";
+          debugIndicator.style.display = "block";
         }
       }
     } else {
@@ -485,7 +572,31 @@ async function initializeTracking() {
       console.log('GazeTech: Waiting for facemesh to load...');
       if (debugIndicator) {
         debugIndicator.textContent = "Waiting for face tracking to load...";
+        debugIndicator.style.display = "block";
       }
+      
+      // Try checking for facemesh periodically
+      let checkForFacemeshInterval = setInterval(() => {
+        if (window.facemesh) {
+          clearInterval(checkForFacemeshInterval);
+          facemesh.load({
+            maxFaces: 1,
+            refineLandmarks: true,
+            detectionConfidence: 0.9,
+            predictIrises: true
+          }).then(model => {
+            faceMesh = model;
+            requestAnimationFrame(trackFace);
+            console.log('GazeTech: Face tracking initialized (delayed)');
+            
+            if (debugIndicator) {
+              debugIndicator.textContent = "Face tracking active";
+            }
+          }).catch(error => {
+            console.error('GazeTech: Failed to load face mesh (delayed):', error);
+          });
+        }
+      }, 500);
     }
     
     // Process any queued restoration requests
@@ -516,6 +627,13 @@ async function initializeTracking() {
       action: 'cameraStatusUpdate',
       isActive: false
     }).catch(() => {});
+    
+    // Try again later if force persistence is enabled
+    if (forceCameraPersistence || justCalibrated) {
+      setTimeout(() => {
+        restoreCamera(true);
+      }, 2000);
+    }
     
     // Process any queued restoration requests
     if (cameraRestorationQueue.length > 0) {
@@ -641,6 +759,8 @@ function processEyeData(face) {
   const rightEyeInnerCorner = landmarks[133];
   const leftEyeOuterCorner = landmarks[263];
   const leftEyeInnerCorner = landmarks[362];
+  const rightIris = landmarks[473]; // More precise iris point
+  const leftIris = landmarks[468];  // More precise iris point
   const noseTip = landmarks[1];
   const foreheadCenter = landmarks[10];
   
@@ -667,20 +787,36 @@ function processEyeData(face) {
   const eyeOpenness = (rightEyeHeight + leftEyeHeight) / 2;
   
   // More precise blink detection with threshold adjusted by sensitivity
-  const blinkThreshold = 0.018 - (0.001 * (eyeMovementSensitivity - 5));
+  const blinkThreshold = 0.015 - (0.001 * (eyeMovementSensitivity - 5));
   const isBlinking = eyeOpenness < blinkThreshold;
   
-  // Calculate gaze vector using eye-to-nose relationships
+  // Calculate gaze vector using iris positions relative to eye corners for better accuracy
+  const rightEyeWidth = Math.abs(rightEyeOuterCorner[0] - rightEyeInnerCorner[0]);
+  const leftEyeWidth = Math.abs(leftEyeOuterCorner[0] - leftEyeInnerCorner[0]);
+  
+  // Calculate iris position within eye socket
+  const rightIrisPosition = {
+    x: (rightIris[0] - rightEyeInnerCorner[0]) / rightEyeWidth - 0.5,
+    y: (rightIris[1] - ((rightEyeUpper[1] + rightEyeLower[1]) / 2)) / (rightEyeHeight * faceWidth)
+  };
+  
+  const leftIrisPosition = {
+    x: (leftIris[0] - leftEyeInnerCorner[0]) / leftEyeWidth - 0.5,
+    y: (leftIris[1] - ((leftEyeUpper[1] + leftEyeLower[1]) / 2)) / (leftEyeHeight * faceWidth)
+  };
+  
+  // Combine iris positions
+  const combinedIrisX = (rightIrisPosition.x + leftIrisPosition.x) / 2;
+  const combinedIrisY = (rightIrisPosition.y + leftIrisPosition.y) / 2;
+  
+  // Calculate head position
   let headX = (((rightEyeCenter.x + leftEyeCenter.x) / 2) - (video.width / 2)) / (video.width / 3);
   let headY = (((rightEyeCenter.y + leftEyeCenter.y) / 2) - (video.height / 2)) / (video.height / 3);
   
-  // Use eye direction relative to head
-  const eyeDirectionX = (leftEyeCenter.x - rightEyeCenter.x) / faceWidth;
-  const eyeDirectionY = ((leftEyeCenter.y + rightEyeCenter.y) / 2 - noseTip[1]) / faceWidth;
-  
-  // Combine head position and eye direction with weighted influence
-  const gazeX = headX * 0.7 + eyeDirectionX * 5.0;
-  const gazeY = headY * 0.7 + eyeDirectionY * 5.0;
+  // Enhanced algorithm that combines head position and iris position
+  // Iris position is weighted more heavily for a more responsive cursor
+  const gazeX = headX * 0.3 + combinedIrisX * 3.0;
+  const gazeY = headY * 0.3 + combinedIrisY * 3.0;
   
   // Apply calibration if available
   let calibratedX = gazeX;
@@ -698,19 +834,19 @@ function processEyeData(face) {
   }
   
   // Apply amplification based on sensitivity (non-linear scaling for better control)
-  const sensitivityFactor = Math.pow(eyeMovementSensitivity / 5, 1.5);
+  const sensitivityFactor = Math.pow(eyeMovementSensitivity / 5, 1.7); // Increased non-linearity (was 1.5)
   const amplifiedX = calibratedX * (headTracking.xScale * sensitivityFactor);
   const amplifiedY = calibratedY * (headTracking.yScale * sensitivityFactor);
   
-  // Map to screen with enhanced non-linear response for finer control
-  // Using cubic function for more precision in center area
-  const screenX = window.innerWidth * (0.5 + Math.pow(amplifiedX, 3) * 0.5);
-  const screenY = window.innerHeight * (0.5 + Math.pow(amplifiedY, 3) * 0.5);
+  // Enhanced non-linear mapping for better precision
+  // Using higher-order function (cubic -> quintic) for more precision
+  const screenX = window.innerWidth * (0.5 + Math.pow(amplifiedX, 5) * 0.05);
+  const screenY = window.innerHeight * (0.5 + Math.pow(amplifiedY, 5) * 0.05);
   
   // Calculate confidence score (0-1) based on face visibility and stability
   const confidence = Math.min(1, faceWidth / (video.width * 0.4));
   
-  // Apply adaptive smoothing based on confidence and movement speed
+  // Apply reduced smoothing for more responsive cursor
   // Lower smoothing (more responsive) when confidence is high and for larger movements
   const movementMagnitude = Math.sqrt(
     Math.pow(screenX - lastGazePoint.x, 2) + 
@@ -719,7 +855,7 @@ function processEyeData(face) {
   
   // Adaptively reduce smoothing for larger movements or when highly confident
   const adaptiveSmoothing = Math.max(
-    0.05,  // minimum smoothing (maximum responsiveness)
+    0.02,  // minimum smoothing (maximum responsiveness) - reduced from 0.05
     headTracking.smoothFactor * (1 - confidence * 0.5) * (1 - movementMagnitude * 2)
   );
   
@@ -746,7 +882,7 @@ function processEyeData(face) {
 // Update cursor position based on gaze point with smooth animation
 function updateCursorPosition(gazePoint) {
   if (cursor) {
-    // Apply slight animation for smoother movement
+    // Apply direct positioning for immediate response
     cursor.style.transform = `translate(${gazePoint.x}px, ${gazePoint.y}px) translate(-50%, -50%)`;
     
     // Add subtle visual feedback for movement
@@ -761,10 +897,10 @@ function updateCursorPosition(gazePoint) {
     
     // Visual feedback on significant movement
     if (movementMagnitude > 30) {
-      cursor.style.transform += ' scale(1.2)';
+      cursor.style.transform += ' scale(1.3)';
       setTimeout(() => {
         cursor.style.transform = `translate(${gazePoint.x}px, ${gazePoint.y}px) translate(-50%, -50%)`;
-      }, 150);
+      }, 100); // Faster reset (was 150ms)
     }
   }
 }
@@ -863,3 +999,580 @@ function handleAutoZoom(gazePoint) {
           };
           
           element.setAttribute('data-original-style', JSON.stringify(originalStyle));
+          
+          // Apply zoom effect
+          element.style.transition = 'transform 0.3s ease-out';
+          element.style.transform = 'scale(1.5)';
+          element.style.zIndex = '9999';
+          
+          // Reset zoom after looking away
+          setTimeout(() => {
+            if (element.hasAttribute('data-gazetech-zoomed')) {
+              const lookingAway = document.elementFromPoint(gazePoint.x, gazePoint.y) !== element;
+              if (lookingAway) {
+                resetZoom(element);
+              } else {
+                // Check again later
+                const checkInterval = setInterval(() => {
+                  const currentElement = document.elementFromPoint(lastGazePoint.x, lastGazePoint.y);
+                  if (currentElement !== element) {
+                    resetZoom(element);
+                    clearInterval(checkInterval);
+                  }
+                }, 500);
+                
+                // Safety timeout to ensure we don't leave elements zoomed forever
+                setTimeout(() => {
+                  clearInterval(checkInterval);
+                  resetZoom(element);
+                }, 10000);
+              }
+            }
+          }, 3000);
+        }
+        // Handle text elements
+        else if (element.tagName === 'P' || element.tagName === 'DIV' || element.tagName === 'SPAN' || 
+                element.tagName === 'H1' || element.tagName === 'H2' || element.tagName === 'H3' || 
+                element.tagName === 'LI' || element.tagName === 'A') {
+          
+          element.setAttribute('data-gazetech-zoomed', 'true');
+          
+          // Store original styles
+          const originalStyle = {
+            fontSize: element.style.fontSize,
+            transition: element.style.transition,
+            backgroundColor: element.style.backgroundColor
+          };
+          
+          element.setAttribute('data-original-style', JSON.stringify(originalStyle));
+          
+          // Get computed font size and increase it
+          const computedStyle = window.getComputedStyle(element);
+          const currentSize = parseFloat(computedStyle.fontSize);
+          
+          // Apply zoom effect
+          element.style.transition = 'font-size 0.3s ease-out, background-color 0.3s ease-out';
+          element.style.fontSize = `${currentSize * 1.3}px`;
+          element.style.backgroundColor = 'rgba(44, 123, 229, 0.05)';
+          
+          // Reset zoom after looking away
+          setTimeout(() => {
+            if (element.hasAttribute('data-gazetech-zoomed')) {
+              const lookingAway = document.elementFromPoint(gazePoint.x, gazePoint.y) !== element;
+              if (lookingAway) {
+                resetZoom(element);
+              } else {
+                // Check again later
+                const checkInterval = setInterval(() => {
+                  const currentElement = document.elementFromPoint(lastGazePoint.x, lastGazePoint.y);
+                  if (currentElement !== element) {
+                    resetZoom(element);
+                    clearInterval(checkInterval);
+                  }
+                }, 500);
+                
+                // Safety timeout
+                setTimeout(() => {
+                  clearInterval(checkInterval);
+                  resetZoom(element);
+                }, 10000);
+              }
+            }
+          }, 5000);
+        }
+      }
+    }
+    
+    // Update last zoom element
+    lastZoomElement = element;
+  } else {
+    // Reset last zoom element if not looking at anything
+    lastZoomElement = null;
+  }
+  
+  // Update last gaze time
+  lastGazeTime = now;
+}
+
+// Reset zoom effect on an element
+function resetZoom(element) {
+  if (element && element.hasAttribute('data-gazetech-zoomed')) {
+    element.removeAttribute('data-gazetech-zoomed');
+    
+    // Restore original styles
+    if (element.hasAttribute('data-original-style')) {
+      try {
+        const originalStyle = JSON.parse(element.getAttribute('data-original-style'));
+        
+        // Apply original styles
+        for (const [key, value] of Object.entries(originalStyle)) {
+          element.style[key] = value;
+        }
+      } catch (e) {
+        console.error('Error restoring original style:', e);
+      }
+      
+      element.removeAttribute('data-original-style');
+    }
+  }
+}
+
+// Handle text-to-speech for elements being looked at
+function handleTextToSpeech(gazePoint) {
+  if (isSpeaking) return; // Don't start new speech if already speaking
+  
+  const now = Date.now();
+  const element = document.elementFromPoint(gazePoint.x, gazePoint.y);
+  
+  if (element) {
+    // If looking at the same text element for a while
+    if (element === lastTextElement && now - lastGazeTime > 2000) {
+      // Get text content
+      let textContent = '';
+      
+      if (element.tagName === 'IMG' && element.alt) {
+        textContent = element.alt; // Use alt text for images
+      } else if (element.tagName === 'INPUT' && element.value) {
+        textContent = element.value; // Use value for input fields
+      } else if (element.tagName === 'A') {
+        textContent = element.textContent || element.innerText || 'Link'; // Use text or "Link" for links
+      } else {
+        textContent = element.textContent || element.innerText || ''; // Use text content for other elements
+      }
+      
+      // Trim and limit length
+      textContent = textContent.trim();
+      if (textContent.length > 200) {
+        textContent = textContent.substring(0, 197) + '...';
+      }
+      
+      // Speak text if not empty
+      if (textContent && textContent.length > 1) {
+        speakText(textContent);
+        
+        // Highlight the element
+        if (!element.classList.contains('gazetech-highlighted-text')) {
+          element.classList.add('gazetech-highlighted-text');
+          
+          // Remove highlight after speech ends
+          setTimeout(() => {
+            element.classList.remove('gazetech-highlighted-text');
+          }, textContent.length * 80); // Rough estimate of speech duration
+        }
+      }
+    }
+    
+    // Update last text element
+    lastTextElement = element;
+  } else {
+    // Reset last text element if not looking at anything
+    lastTextElement = null;
+  }
+}
+
+// Speak text using speech synthesis
+function speakText(text) {
+  if (!text || isSpeaking) return;
+  
+  // Cancel any ongoing speech
+  speechSynthesis.cancel();
+  
+  // Create utterance
+  const utterance = new SpeechSynthesisUtterance(text);
+  
+  // Set language based on page or default to English
+  const pageLang = document.documentElement.lang || 'en';
+  utterance.lang = pageLang;
+  
+  // Set rate from settings
+  utterance.rate = settings.speechRate || 1;
+  
+  // Set event handlers
+  utterance.onstart = () => {
+    isSpeaking = true;
+  };
+  
+  utterance.onend = () => {
+    isSpeaking = false;
+  };
+  
+  utterance.onerror = () => {
+    isSpeaking = false;
+  };
+  
+  // Speak
+  speechSynthesis.speak(utterance);
+}
+
+// Handle navigation by looking at screen edges
+function handleEdgeNavigation(gazePoint) {
+  const edgeSize = settings.edgeSize || 10; // Default edge size is 10% of screen
+  const edgeSizePixels = {
+    x: window.innerWidth * (edgeSize / 100),
+    y: window.innerHeight * (edgeSize / 100)
+  };
+  
+  // Check if looking at left edge
+  if (gazePoint.x < edgeSizePixels.x) {
+    showEdgeIndicator('left');
+    
+    // If looking at edge for more than 1 second, navigate back
+    if (Date.now() - lastGazeTime > 1000) {
+      window.history.back();
+      lastGazeTime = Date.now(); // Reset to prevent multiple navigations
+    }
+  }
+  // Check if looking at right edge
+  else if (gazePoint.x > window.innerWidth - edgeSizePixels.x) {
+    showEdgeIndicator('right');
+    
+    // If looking at edge for more than 1 second, navigate forward
+    if (Date.now() - lastGazeTime > 1000) {
+      window.history.forward();
+      lastGazeTime = Date.now(); // Reset to prevent multiple navigations
+    }
+  }
+  // Check if looking at bottom edge for scrolling
+  else if (gazePoint.y > window.innerHeight - edgeSizePixels.y) {
+    showEdgeIndicator('bottom');
+  }
+  else {
+    hideEdgeIndicators();
+  }
+}
+
+// Show edge indicator
+function showEdgeIndicator(edge) {
+  // Create or get edge indicators
+  let leftEdge = document.getElementById('gazetech-edge-left');
+  let rightEdge = document.getElementById('gazetech-edge-right');
+  let bottomEdge = document.getElementById('gazetech-edge-bottom');
+  
+  if (!leftEdge) {
+    leftEdge = document.createElement('div');
+    leftEdge.id = 'gazetech-edge-left';
+    leftEdge.className = 'gazetech-edge-left';
+    document.body.appendChild(leftEdge);
+  }
+  
+  if (!rightEdge) {
+    rightEdge = document.createElement('div');
+    rightEdge.id = 'gazetech-edge-right';
+    rightEdge.className = 'gazetech-edge-right';
+    document.body.appendChild(rightEdge);
+  }
+  
+  if (!bottomEdge) {
+    bottomEdge = document.createElement('div');
+    bottomEdge.id = 'gazetech-edge-bottom';
+    bottomEdge.className = 'gazetech-edge-bottom';
+    document.body.appendChild(bottomEdge);
+  }
+  
+  // Activate the appropriate edge
+  leftEdge.classList.toggle('gazetech-edge-active', edge === 'left');
+  rightEdge.classList.toggle('gazetech-edge-active', edge === 'right');
+  bottomEdge.classList.toggle('gazetech-edge-active', edge === 'bottom');
+}
+
+// Hide all edge indicators
+function hideEdgeIndicators() {
+  const edges = document.querySelectorAll('.gazetech-edge-left, .gazetech-edge-right, .gazetech-edge-bottom');
+  edges.forEach(edge => {
+    edge.classList.remove('gazetech-edge-active');
+  });
+}
+
+// Handle auto scrolling based on gaze position
+function handleAutoScroll(gazePoint) {
+  if (!settings.autoScroll) return;
+  
+  const edgeSize = settings.edgeSize || 10; // Default edge size is 10% of screen
+  const edgeSizePixels = {
+    y: window.innerHeight * (edgeSize / 100)
+  };
+  
+  // Check if looking at bottom edge
+  if (gazePoint.y > window.innerHeight - edgeSizePixels.y) {
+    // Start scrolling down if not already scrolling
+    if (!isScrolling) {
+      isScrolling = true;
+      smoothScroll('down');
+    }
+  }
+  // Check if looking at top edge
+  else if (gazePoint.y < edgeSizePixels.y) {
+    // Start scrolling up if not already scrolling
+    if (!isScrolling) {
+      isScrolling = true;
+      smoothScroll('up');
+    }
+  }
+  else {
+    // Stop scrolling
+    isScrolling = false;
+  }
+}
+
+// Smooth scrolling function
+function smoothScroll(direction) {
+  if (!isScrolling) return;
+  
+  const scrollSpeed = settings.scrollSpeed || 5;
+  const scrollAmount = direction === 'down' ? scrollSpeed : -scrollSpeed;
+  
+  // Scroll the page
+  window.scrollBy({
+    top: scrollAmount,
+    behavior: 'auto' // Use 'auto' for smoother continuous scrolling
+  });
+  
+  // Continue scrolling if still looking at edge
+  requestAnimationFrame(() => {
+    if (isScrolling) {
+      smoothScroll(direction);
+    }
+  });
+}
+
+// Initialize when document is loaded
+document.addEventListener('DOMContentLoaded', async function() {
+  try {
+    console.log("GazeTech: Content script loaded");
+    
+    // Load settings first
+    await loadSettings();
+    
+    // Initialize UI
+    initializeUI();
+    
+    // Start heartbeat immediately
+    startHeartbeat();
+    
+    // Check if we should restore camera
+    chrome.runtime.sendMessage({
+      action: 'checkCameraStatus',
+      forceCheck: true
+    }).then(response => {
+      console.log("Initial camera check:", response);
+      if (response && (response.shouldActivate || response.forceRestore)) {
+        // Initialize tracking immediately
+        initializeTracking(true);
+      }
+    }).catch(error => {
+      console.log("Initial camera check error:", error);
+    });
+    
+    // Add message listeners
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'startEyeTracking') {
+        console.log("Starting eye tracking with calibration data:", request.calibrationData);
+        
+        // Store calibration data
+        calibrationData = request.calibrationData;
+        justCalibrated = true;
+        forceCameraPersistence = true;
+        
+        // Update settings if provided
+        if (request.settings) {
+          settings = { ...settings, ...request.settings };
+          
+          // Apply eye movement sensitivity
+          if (settings.gazeSensitivity) {
+            eyeMovementSensitivity = settings.gazeSensitivity;
+            headTracking.xScale = 2.5 + (eyeMovementSensitivity * 0.7);
+            headTracking.yScale = 2.5 + (eyeMovementSensitivity * 0.7);
+            headTracking.smoothFactor = Math.max(0.03, 0.25 - (eyeMovementSensitivity * 0.03));
+          }
+        }
+        
+        // Force initialize camera if not already done
+        if (!cameraInitialized) {
+          initializeTracking(true);
+        }
+        
+        // Update status
+        isActive = true;
+        isCalibrated = true;
+        
+        // Set calibration completion flag
+        justCalibrated = true;
+        
+        // Store calibration to storage
+        chrome.storage.sync.set({
+          calibrated: true,
+          calibrationData: calibrationData
+        });
+        
+        // Notify background script that calibration is complete
+        chrome.runtime.sendMessage({
+          action: 'calibrationCompleted',
+          calibrationData: calibrationData
+        }).catch(() => {});
+        
+        // Show notification
+        showNotification("Calibration terminée, suivi des yeux actif");
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      if (request.action === 'tabFocus') {
+        console.log('Tab received focus notification:', request);
+        tabInFocus = true;
+        
+        // Restore camera if needed
+        if (request.shouldRestoreCamera || request.forceActivate) {
+          restoreCamera(request.forceActivate || false);
+        }
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      if (request.action === 'tabBlur') {
+        console.log('Tab is blurring but keeping camera alive');
+        tabInFocus = false;
+        
+        // Keep camera on despite tab blur if required
+        if (request.keepCameraAlive || forceCameraPersistence) {
+          forceKeepCameraOn = true;
+        }
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      if (request.action === 'forceActivateCamera') {
+        console.log('Force activate camera requested');
+        forceKeepCameraOn = true;
+        forceCameraPersistence = true;
+        restoreCamera(true);
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      if (request.action === 'syncCameraState') {
+        if (request.shouldBeActive && !cameraInitialized) {
+          console.log('Sync: Camera should be active but isn\'t, restoring');
+          forceKeepCameraOn = true;
+          restoreCamera(true);
+        }
+        
+        // Update persistence flag
+        if (request.forcePersistence) {
+          forceCameraPersistence = true;
+          forceKeepCameraOn = true;
+        }
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      if (request.action === 'maintainCamera') {
+        console.log('Maintain camera request received');
+        
+        // Update persistence flags
+        if (request.forcePersistence) {
+          forceCameraPersistence = true;
+          forceKeepCameraOn = true;
+        }
+        
+        // Force restore camera if we just completed calibration
+        if (request.afterCalibration) {
+          justCalibrated = true;
+        }
+        
+        // Restore camera if not active
+        if (!cameraInitialized) {
+          restoreCamera(true);
+        }
+        
+        sendResponse({ success: true });
+        return true;
+      }
+      
+      sendResponse({ success: false });
+      return true;
+    });
+    
+    // Add listeners for visibility changes
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        // Page is hidden (user switched tabs)
+        console.log('Page hidden, maintaining camera if persistence is enabled');
+        tabInFocus = false;
+      } else {
+        // Page is visible
+        console.log('Page visible, restoring camera if needed');
+        tabInFocus = true;
+        
+        // Restore camera if needed
+        if (!cameraInitialized && (forceKeepCameraOn || forceCameraPersistence)) {
+          restoreCamera(true);
+        }
+      }
+    });
+    
+    // Add listeners for window focus/blur
+    window.addEventListener('focus', () => {
+      console.log('Window gained focus');
+      tabInFocus = true;
+      
+      // Notify background script
+      chrome.runtime.sendMessage({
+        action: 'tabFocused',
+      }).catch(() => {});
+      
+      // Restore camera if needed
+      if (!cameraInitialized && (forceKeepCameraOn || forceCameraPersistence)) {
+        restoreCamera(true);
+      }
+    });
+    
+    window.addEventListener('blur', () => {
+      console.log('Window lost focus');
+      tabInFocus = false;
+      
+      // Notify background script
+      chrome.runtime.sendMessage({
+        action: 'tabBlurred',
+      }).catch(() => {});
+    });
+    
+  } catch (error) {
+    console.error("GazeTech: Error initializing content script:", error);
+  }
+});
+
+// Extra safeguard: check camera state repeatedly
+setInterval(() => {
+  if (isActive && !cameraInitialized && (forceCameraPersistence || justCalibrated)) {
+    console.log("Periodic camera check: camera should be active but isn't");
+    restoreCamera(true);
+  }
+}, 5000);
+
+// Initialize if document is already loaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  console.log("Document already loaded, initializing");
+  setTimeout(() => {
+    loadSettings().then(() => {
+      initializeUI();
+      startHeartbeat();
+      
+      // Check if we should initialize camera
+      chrome.runtime.sendMessage({
+        action: 'checkCameraStatus',
+        forceCheck: true
+      }).then(response => {
+        if (response && (response.shouldActivate || response.forceRestore)) {
+          initializeTracking(true);
+        }
+      }).catch(error => {
+        console.log("Initial camera check error:", error);
+      });
+    });
+  }, 100);
+}

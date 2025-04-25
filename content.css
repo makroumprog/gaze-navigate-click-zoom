@@ -1,16 +1,16 @@
 
 #gazetech-cursor {
   position: fixed;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background-color: rgba(44, 123, 229, 0.5);
-  border: 2px solid rgba(44, 123, 229, 0.8);
+  background-color: rgba(44, 123, 229, 0.7);
+  border: 3px solid rgba(44, 123, 229, 0.9);
   pointer-events: none;
   z-index: 999999;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 10px rgba(44, 123, 229, 0.5);
-  transition: background-color 0.2s, opacity 0.2s;
+  box-shadow: 0 0 15px rgba(44, 123, 229, 0.7);
+  transition: background-color 0.2s, opacity 0.2s, transform 0.03s ease-out;
 }
 
 #gazetech-video, #gazetech-canvas {
@@ -28,6 +28,7 @@
   position: relative;
   z-index: 9999;
   box-shadow: 0 0 20px rgba(44, 123, 229, 0.6);
+  transition: transform 0.3s ease-out;
 }
 
 .gazetech-highlighted-text {
@@ -83,4 +84,23 @@
 
 .gazetech-blink-animation {
   animation: gazetech-blink 0.3s ease-in-out;
+}
+
+/* New indicator styles */
+#gazetech-status {
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+#gazetech-debug {
+  transition: opacity 0.3s, background-color 0.3s;
+}
+
+#gazetech-persistent {
+  animation: fade-pulse 2s infinite;
+}
+
+@keyframes fade-pulse {
+  0% { opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
 }
