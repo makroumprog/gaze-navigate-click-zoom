@@ -10,7 +10,7 @@
   z-index: 999999;
   transform: translate(-50%, -50%);
   box-shadow: 0 0 15px rgba(44, 123, 229, 0.7);
-  transition: background-color 0.2s, opacity 0.2s, transform 0.03s ease-out;
+  transition: background-color 0.2s, opacity 0.2s, transform 0.01s ease-out; /* Réduit à 0.01s pour une réponse instantanée */
 }
 
 #gazetech-video, #gazetech-canvas {
