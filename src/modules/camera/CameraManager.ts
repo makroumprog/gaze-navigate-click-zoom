@@ -1,4 +1,3 @@
-
 export interface CameraState {
   isInitialized: boolean;
   stream: MediaStream | null;
@@ -14,6 +13,8 @@ export class CameraManager {
 
   private video: HTMLVideoElement;
   private onStateChange: (state: CameraState) => void;
+  private lastInitAttempt: number = 0;
+  private initInProgress: boolean = false;
 
   constructor(video: HTMLVideoElement, onStateChange: (state: CameraState) => void) {
     this.video = video;
@@ -21,18 +22,45 @@ export class CameraManager {
   }
 
   async initialize(force: boolean = false): Promise<boolean> {
+    // Prevent too many rapid init attempts
+    const now = Date.now();
+    if (now - this.lastInitAttempt < 500 && !force) {
+      return this.state.isInitialized;
+    }
+    
+    this.lastInitAttempt = now;
+    
+    // Don't attempt to initialize if already in progress
+    if (this.initInProgress) {
+      return this.state.isInitialized;
+    }
+    
     if (this.state.isInitialized && !force) {
       return true;
     }
+    
+    this.initInProgress = true;
 
     try {
+      // Check if current stream is active before replacing
       if (this.state.stream) {
-        this.state.stream.getTracks().forEach(track => {
+        const tracks = this.state.stream.getTracks();
+        const hasActiveVideoTrack = tracks.some(track => track.kind === 'video' && track.enabled);
+        
+        // If we have an active video track and not forcing re-init, just return success
+        if (hasActiveVideoTrack && !force) {
+          this.initInProgress = false;
+          return true;
+        }
+        
+        // Otherwise stop current tracks
+        tracks.forEach(track => {
           try { track.stop(); } catch (e) {}
         });
         this.state.stream = null;
       }
 
+      // Get new stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           width: { ideal: 640, min: 320 },
@@ -52,6 +80,7 @@ export class CameraManager {
       this.state.permissionDenied = false;
       this.onStateChange(this.state);
       
+      this.initInProgress = false;
       return true;
     } catch (error) {
       console.error('Camera initialization error:', error);
@@ -60,6 +89,8 @@ export class CameraManager {
                                    error.name === 'PermissionDeniedError' || 
                                    error.message.includes('Permission');
       this.onStateChange(this.state);
+      
+      this.initInProgress = false;
       return false;
     }
   }
@@ -99,6 +130,13 @@ export class CameraManager {
     }
     this.state.isInitialized = false;
     this.onStateChange(this.state);
+  }
+  
+  isActive(): boolean {
+    if (!this.state.stream) return false;
+    
+    const videoTracks = this.state.stream.getVideoTracks();
+    return videoTracks.length > 0 && videoTracks[0].enabled && this.state.isInitialized;
   }
 }
 

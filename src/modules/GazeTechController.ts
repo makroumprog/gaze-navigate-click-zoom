@@ -18,6 +18,7 @@ export class GazeTechController {
   private eyeTracker: EyeTracker;
   private isActive: boolean = true;
   private faceMesh: any = null;
+  private persistenceInterval: number | null = null; // For maintaining camera state
   
   constructor(private settings: GazeTechSettings = {}) {
     this.ui = new GazeTechUI(settings.debugMode);
@@ -57,6 +58,9 @@ export class GazeTechController {
 
     // Start tracking loop
     this.startTracking();
+    
+    // Start camera persistence check
+    this.startPersistenceCheck();
   }
 
   private handleCameraStateChange(state: CameraState) {
@@ -64,7 +68,7 @@ export class GazeTechController {
   }
 
   private async startTracking() {
-    if (!this.isActive || !this.faceMesh) {
+    if (!this.faceMesh) {
       requestAnimationFrame(this.startTracking.bind(this));
       return;
     }
@@ -81,8 +85,11 @@ export class GazeTechController {
 
       if (predictions.length > 0) {
         const trackingResult = this.eyeTracker.processEyeData(predictions[0]);
-        this.ui.updateCursorPosition(trackingResult.gazePoint.x, trackingResult.gazePoint.y);
-        this.ui.updateStatusIndicator(true);
+        if (this.isActive) {
+          this.ui.updateCursorPosition(trackingResult.gazePoint.x, trackingResult.gazePoint.y);
+          this.ui.updateStatusIndicator(true);
+          this.ui.showCursor(true); // Ensure cursor is visible during tracking
+        }
       } else {
         this.ui.updateStatusIndicator(false);
       }
@@ -94,26 +101,67 @@ export class GazeTechController {
     requestAnimationFrame(this.startTracking.bind(this));
   }
 
+  // New method to maintain camera and tracking state persistently
+  private startPersistenceCheck() {
+    // Clear any existing interval
+    if (this.persistenceInterval !== null) {
+      clearInterval(this.persistenceInterval);
+    }
+    
+    // Set up interval to check and maintain camera connection
+    this.persistenceInterval = window.setInterval(() => {
+      if (this.isActive) {
+        this.restoreCamera(true);
+        this.ui.showCursor(true);
+      }
+    }, 1000) as any;
+    
+    // Also add visibility change listener for more reliable restoration
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.isActive) {
+        this.restoreCamera(true);
+        this.ui.showCursor(true);
+      }
+    });
+  }
+
   public async restoreCamera(force: boolean = false) {
-    return this.cameraManager.initialize(force);
+    if (!this.isActive) return false;
+    
+    const result = await this.cameraManager.initialize(force);
+    if (result) {
+      this.ui.showCursor(true);
+    }
+    return result;
   }
   
-  // Nouvelle méthode pour mettre à jour les données de calibration
   public updateCalibrationData(calibrationData: any) {
     this.eyeTracker.updateCalibrationData(calibrationData);
     console.log('Calibration data updated:', calibrationData);
   }
   
-  // Nouvelle méthode pour activer/désactiver le suivi
   public setActive(active: boolean) {
     console.log('GazeTech tracking active state:', active);
     this.isActive = active;
+    this.eyeTracker.setActive(active);
     this.ui.toggleCursorVisibility(active);
+    
+    if (active) {
+      // Ensure camera is running when activated
+      this.restoreCamera(true);
+    }
   }
 
   public cleanup() {
     this.isActive = false;
+    
+    if (this.persistenceInterval !== null) {
+      clearInterval(this.persistenceInterval);
+      this.persistenceInterval = null;
+    }
+    
     this.cameraManager.cleanup();
+    this.ui.showCursor(false);
   }
 }
 

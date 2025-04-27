@@ -15,6 +15,7 @@ export class EyeTracker {
   private smoothingFactor: number;
   private calibrationData: any;
   private lastGazePoint: GazePoint = { x: 0, y: 0 };
+  private isActive: boolean = true; // Added to track activation state
   
   constructor(settings: EyeTrackerSettings) {
     this.sensitivity = settings.sensitivity;
@@ -26,7 +27,24 @@ export class EyeTracker {
     this.calibrationData = calibrationData;
   }
   
+  // New method to toggle active state
+  public setActive(active: boolean) {
+    this.isActive = active;
+  }
+  
+  // New method to get active state
+  public isTracking(): boolean {
+    return this.isActive;
+  }
+  
   processEyeData(faceData: any) {
+    if (!this.isActive) {
+      return {
+        gazePoint: this.lastGazePoint,
+        rawPoint: this.lastGazePoint
+      };
+    }
+    
     // Extract iris positions from face mesh (landmarks 468 and 473)
     const mesh = faceData.scaledMesh;
     
