@@ -1,9 +1,9 @@
-
 import { GazeTechController } from './modules/GazeTechController';
 
 let gazeTech: GazeTechController | null = null;
 let settings = {};
 let isInitialized = false;
+let forceKeepCameraActive = true; // Always keep camera active unless explicitly stopped
 
 // Load settings from storage
 async function loadSettings() {
@@ -71,14 +71,14 @@ async function initialize() {
 // Heartbeat function with improved frequency for better persistence
 function startHeartbeat() {
   setInterval(() => {
-    if (gazeTech) {
+    if (gazeTech && forceKeepCameraActive) {
       chrome.runtime.sendMessage({
         action: 'heartbeat',
         hasCameraActive: true,
         tabUrl: window.location.href
       }).catch(() => {});
     }
-  }, 1000); // Plus fréquent (toutes les 1 seconde)
+  }, 500); // More frequent (every 500ms)
 }
 
 // Message handler
@@ -96,6 +96,17 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
           gazeTech.updateCalibrationData(request.calibrationData);
         }
         
+        // Force camera to stay active after popup closes
+        if (request.keepCameraActive) {
+          forceKeepCameraActive = true;
+          console.log('Camera set to stay active after popup closes');
+        }
+        
+        // Force camera on if requested
+        if (request.forceCamera) {
+          gazeTech.restoreCamera(true);
+        }
+        
         // Ensure tracking is active
         gazeTech.setActive(true);
         
@@ -104,14 +115,25 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
       sendResponse({ success: true });
       break;
       
+    case 'stopCamera':
+      // New handler to stop the camera explicitly
+      if (gazeTech) {
+        gazeTech.setActive(false);
+        gazeTech.cleanup();
+        forceKeepCameraActive = false;
+        console.log('Camera stopped by user request');
+      }
+      sendResponse({ success: true });
+      break;
+      
     case 'tabFocus':
     case 'forceActivateCamera':
     case 'syncCameraState':
     case 'maintainCamera':
-      if (gazeTech) {
+      if (forceKeepCameraActive && gazeTech) {
         gazeTech.restoreCamera(true);
         gazeTech.setActive(true);
-      } else if (!isInitialized) {
+      } else if (!isInitialized && forceKeepCameraActive) {
         // Re-initialize if needed
         initialize();
       }
@@ -119,9 +141,9 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
       break;
       
     case 'tabBlur':
-      // Important: Ne désactivez PAS le suivi sur blur pour qu'il continue de fonctionner quand la popup se ferme
-      if (gazeTech) {
-        // Continuer le suivi même quand le popup est fermé
+      // IMPORTANT: DON'T disable tracking on blur so it continues working when popup closes
+      if (gazeTech && forceKeepCameraActive) {
+        // Continue tracking even when popup is closed
         gazeTech.setActive(true);
       }
       sendResponse({ success: true });
@@ -129,8 +151,34 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
       
     case 'toggleExtension':
       if (gazeTech) {
-        // Pour le toggle, nous respectons l'état demandé mais on assure que c'est toujours actif si non spécifié
+        // For toggle, we respect the requested state but ensure it's always active if not specified
         gazeTech.setActive(request.isActive !== false);
+      }
+      sendResponse({ success: true });
+      break;
+      
+    case 'settingsUpdated':
+      // Update gazeTech settings if provided
+      if (request.settings && gazeTech) {
+        if (request.settings.gazeSensitivity !== undefined) {
+          // Re-create eye tracker with new sensitivity
+          gazeTech = new GazeTechController({
+            debugMode: true,
+            sensitivity: request.settings.gazeSensitivity,
+            smoothingFactor: 0.05,
+            calibrationData: settings.calibrationData
+          });
+          
+          // Re-initialize if active
+          if (request.settings.isActive !== false && request.settings.cameraActive !== false) {
+            gazeTech.initialize().then(() => {
+              gazeTech.setActive(true);
+            });
+          }
+        }
+        
+        // Update force keep camera flag
+        forceKeepCameraActive = request.settings.cameraActive !== false;
       }
       sendResponse({ success: true });
       break;
@@ -142,7 +190,7 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
 
 // Visibility change handler with improved activation
 function handleVisibilityChange() {
-  if (!document.hidden && gazeTech) {
+  if (!document.hidden && gazeTech && forceKeepCameraActive) {
     console.log("Document became visible, activating eye tracking");
     gazeTech.restoreCamera(true);
     gazeTech.setActive(true);
@@ -152,10 +200,10 @@ function handleVisibilityChange() {
 // Window focus handlers with improved activation
 function handleWindowFocus() {
   console.log("Window focus gained, activating eye tracking");
-  if (gazeTech) {
+  if (gazeTech && forceKeepCameraActive) {
     gazeTech.restoreCamera(true);
     gazeTech.setActive(true);
-  } else if (!isInitialized) {
+  } else if (!isInitialized && forceKeepCameraActive) {
     // Re-initialize if needed
     initialize();
   }
@@ -164,7 +212,7 @@ function handleWindowFocus() {
 
 function handleWindowBlur() {
   chrome.runtime.sendMessage({ action: 'tabBlurred' }).catch(() => {});
-  // Important: Ne désactivez PAS sur blur pour que le suivi continue de fonctionner quand la popup se ferme
+  // Important: DO NOT disable on blur so tracking continues working when popup closes
 }
 
 // Initialize if document is ready

@@ -62,7 +62,7 @@ export class GazeTechController {
     // Start camera persistence check
     this.startPersistenceCheck();
     
-    // Assurer que le curseur est visible au démarrage
+    // Make sure the cursor is visible at startup
     this.ui.showCursor(this.isActive);
   }
 
@@ -91,7 +91,7 @@ export class GazeTechController {
         if (this.isActive) {
           this.ui.updateCursorPosition(trackingResult.gazePoint.x, trackingResult.gazePoint.y);
           this.ui.updateStatusIndicator(true);
-          this.ui.showCursor(true); // Assurer que le curseur est visible pendant le suivi
+          this.ui.showCursor(true); // Ensure cursor is visible during tracking
         }
       } else {
         this.ui.updateStatusIndicator(false);
@@ -104,7 +104,7 @@ export class GazeTechController {
     requestAnimationFrame(this.startTracking.bind(this));
   }
 
-  // Méthode améliorée pour maintenir la caméra et le suivi persistants
+  // Improved method to maintain camera and tracking persistence
   private startPersistenceCheck() {
     // Clear any existing interval
     if (this.persistenceInterval !== null) {
@@ -117,7 +117,7 @@ export class GazeTechController {
         this.restoreCamera(true);
         this.ui.showCursor(true);
       }
-    }, 500) as any; // Plus fréquent pour une meilleure réactivité
+    }, 300) as any; // More frequent for better responsiveness
     
     // Also add visibility change listener for more reliable restoration
     document.addEventListener('visibilitychange', () => {
@@ -142,7 +142,7 @@ export class GazeTechController {
     this.eyeTracker.updateCalibrationData(calibrationData);
     console.log('Calibration data updated:', calibrationData);
     
-    // Assurez-vous que le suivi est actif après la mise à jour de la calibration
+    // Make sure tracking is active after calibration update
     this.setActive(true);
   }
   

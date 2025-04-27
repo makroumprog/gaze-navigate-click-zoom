@@ -15,7 +15,7 @@ export class EyeTracker {
   private smoothingFactor: number;
   private calibrationData: any;
   private lastGazePoint: GazePoint = { x: 0, y: 0 };
-  private isActive: boolean = true; // Active par défaut
+  private isActive: boolean = true; // Active by default
   
   constructor(settings: EyeTrackerSettings) {
     this.sensitivity = settings.sensitivity;
@@ -25,7 +25,7 @@ export class EyeTracker {
   
   public updateCalibrationData(calibrationData: any) {
     this.calibrationData = calibrationData;
-    // Activation automatique après une mise à jour des données de calibration
+    // Automatically activate after calibration data update
     this.isActive = true;
   }
   
@@ -61,14 +61,14 @@ export class EyeTracker {
     let calibratedY = irisY;
     
     if (this.calibrationData) {
-      // Amélioration de l'application de la calibration
+      // Improved calibration application
       try {
         // Apply any calibration transformation
         const centerPoint = this.calibrationData[0]; // Center calibration point
         if (centerPoint && centerPoint.eyeData) {
-          // Calculate adjustment based on center calibration with facteur de sensibilité
-          const offsetX = (centerPoint.eyeData.x - irisX) * 1.2; // Facteur d'amplification
-          const offsetY = (centerPoint.eyeData.y - irisY) * 1.2; // Facteur d'amplification
+          // Calculate adjustment based on center calibration with sensitivity factor
+          const offsetX = (centerPoint.eyeData.x - irisX) * 1.5; // Enhanced amplification factor
+          const offsetY = (centerPoint.eyeData.y - irisY) * 1.5; // Enhanced amplification factor
           calibratedX = irisX + offsetX;
           calibratedY = irisY + offsetY;
         }
@@ -86,12 +86,12 @@ export class EyeTracker {
     const faceHeight = faceData.boundingBox.bottomRight[1] - faceData.boundingBox.topLeft[1];
     
     // Calculate screen position with enhanced sensitivity and improved mapping
-    const sensitivityFactor = this.sensitivity / 5; // Ajusté pour une meilleure sensibilité
+    const sensitivityFactor = this.sensitivity / 4; // Better sensitivity adjustment
     const gazeX = screenWidth * (calibratedX / faceWidth) * sensitivityFactor;
     const gazeY = screenHeight * (calibratedY / faceHeight) * sensitivityFactor;
     
     // Apply smoothing for more natural movement with adjustable smoothing factor
-    const smoothingFactor = Math.min(0.3, Math.max(0.05, this.smoothingFactor));
+    const smoothingFactor = Math.min(0.35, Math.max(0.05, this.smoothingFactor));
     const smoothedX = this.lastGazePoint.x * (1 - smoothingFactor) + gazeX * smoothingFactor;
     const smoothedY = this.lastGazePoint.y * (1 - smoothingFactor) + gazeY * smoothingFactor;
     

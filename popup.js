@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Elements
   const calibrateBtn = document.getElementById('calibrate-btn');
   const toggleBtn = document.getElementById('toggle-btn');
+  const stopCameraBtn = document.getElementById('stop-camera-btn');
   const statusIndicator = document.getElementById('status-indicator');
   const statusText = document.getElementById('status-text');
   const modal = document.getElementById('calibration-modal');
@@ -28,10 +29,12 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Current extension state
   let isActive = true;
+  let cameraActive = true; // Track camera state separately
 
   // Load saved settings
   chrome.storage.sync.get({
     isActive: true,
+    cameraActive: true,
     gazeCursor: true,
     blinkClick: true,
     autoZoom: true,
@@ -46,6 +49,7 @@ document.addEventListener('DOMContentLoaded', function() {
     scrollSpeed: 5
   }, function(items) {
     isActive = items.isActive;
+    cameraActive = items.cameraActive !== false; // Default to true
     updateStatusUI(isActive);
     
     // Set toggle states
@@ -77,6 +81,47 @@ document.addEventListener('DOMContentLoaded', function() {
         action: 'toggleExtension',
         isActive: isActive
       });
+    });
+  });
+  
+  // NEW: Stop Camera button
+  stopCameraBtn.addEventListener('click', function() {
+    cameraActive = false;
+    saveSettings();
+    
+    // Notify content scripts to stop camera
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: 'stopCamera'
+      });
+    });
+    
+    // Update UI to show camera is stopped
+    statusIndicator.className = 'inactive';
+    statusText.textContent = 'Caméra arrêtée';
+    stopCameraBtn.textContent = 'Réactiver Caméra';
+    
+    // Toggle button functionality to restart camera
+    stopCameraBtn.removeEventListener('click', arguments.callee);
+    stopCameraBtn.addEventListener('click', function() {
+      cameraActive = true;
+      saveSettings();
+      
+      // Notify content scripts to restart camera
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'startEyeTracking',
+          forceCamera: true
+        });
+      });
+      
+      // Update UI
+      updateStatusUI(isActive);
+      stopCameraBtn.textContent = 'Arrêter Caméra';
+      
+      // Restore original click handler
+      stopCameraBtn.removeEventListener('click', arguments.callee);
+      stopCameraBtn.addEventListener('click', arguments.callee.caller);
     });
   });
   
@@ -129,9 +174,13 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Update UI based on active state
   function updateStatusUI(active) {
-    if (active) {
+    if (active && cameraActive) {
       statusIndicator.className = 'active';
       statusText.textContent = 'Actif';
+      toggleBtn.textContent = 'Désactiver';
+    } else if (active && !cameraActive) {
+      statusIndicator.className = 'inactive';
+      statusText.textContent = 'Caméra arrêtée';
       toggleBtn.textContent = 'Désactiver';
     } else {
       statusIndicator.className = 'inactive';
@@ -144,6 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function saveSettings() {
     chrome.storage.sync.set({
       isActive: isActive,
+      cameraActive: cameraActive,
       gazeCursor: gazeCursor.checked,
       blinkClick: blinkClick.checked,
       autoZoom: autoZoom.checked,
@@ -161,7 +211,13 @@ document.addEventListener('DOMContentLoaded', function() {
       chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         if (tabs[0]) {
           chrome.tabs.sendMessage(tabs[0].id, {
-            action: 'settingsUpdated'
+            action: 'settingsUpdated',
+            settings: {
+              isActive: isActive,
+              cameraActive: cameraActive,
+              gazeSensitivity: parseInt(gazeSensitivity.value),
+              // Include other settings as needed
+            }
           });
         }
       });
@@ -493,7 +549,8 @@ document.addEventListener('DOMContentLoaded', function() {
             speechRate: parseFloat(speechRate.value),
             edgeSize: parseInt(edgeSize.value),
             scrollSpeed: parseInt(scrollSpeed.value)
-          }
+          },
+          keepCameraActive: true // Important flag to keep camera active after popup closes
         });
       }
     });
@@ -501,6 +558,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Mettre à jour l'interface pour indiquer que le suivi des yeux est actif
     updateStatusUI(true);
     isActive = true;
+    cameraActive = true;
     saveSettings();
   }
 });
