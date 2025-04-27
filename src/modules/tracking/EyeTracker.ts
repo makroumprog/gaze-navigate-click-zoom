@@ -15,7 +15,7 @@ export class EyeTracker {
   private smoothingFactor: number;
   private calibrationData: any;
   private lastGazePoint: GazePoint = { x: 0, y: 0 };
-  private isActive: boolean = true; // Added to track activation state
+  private isActive: boolean = true; // Active par défaut
   
   constructor(settings: EyeTrackerSettings) {
     this.sensitivity = settings.sensitivity;
@@ -25,14 +25,14 @@ export class EyeTracker {
   
   public updateCalibrationData(calibrationData: any) {
     this.calibrationData = calibrationData;
+    // Activation automatique après une mise à jour des données de calibration
+    this.isActive = true;
   }
   
-  // New method to toggle active state
   public setActive(active: boolean) {
     this.isActive = active;
   }
   
-  // New method to get active state
   public isTracking(): boolean {
     return this.isActive;
   }
@@ -61,16 +61,14 @@ export class EyeTracker {
     let calibratedY = irisY;
     
     if (this.calibrationData) {
-      // Simple calibration adjustment (real implementation would be more sophisticated)
-      // This is a placeholder - in a real system we'd use the calibration points
-      // to create a mapping function
+      // Amélioration de l'application de la calibration
       try {
         // Apply any calibration transformation
         const centerPoint = this.calibrationData[0]; // Center calibration point
         if (centerPoint && centerPoint.eyeData) {
-          // Calculate adjustment based on center calibration
-          const offsetX = centerPoint.eyeData.x - irisX;
-          const offsetY = centerPoint.eyeData.y - irisY;
+          // Calculate adjustment based on center calibration with facteur de sensibilité
+          const offsetX = (centerPoint.eyeData.x - irisX) * 1.2; // Facteur d'amplification
+          const offsetY = (centerPoint.eyeData.y - irisY) * 1.2; // Facteur d'amplification
           calibratedX = irisX + offsetX;
           calibratedY = irisY + offsetY;
         }
@@ -80,22 +78,22 @@ export class EyeTracker {
     }
     
     // Map the iris position to screen coordinates
-    // The mapping depends on the face position and size
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     
-    // Use bounding box to normalize coordinates
+    // Use bounding box to normalize coordinates with improved mapping
     const faceWidth = faceData.boundingBox.bottomRight[0] - faceData.boundingBox.topLeft[0];
     const faceHeight = faceData.boundingBox.bottomRight[1] - faceData.boundingBox.topLeft[1];
     
-    // Calculate screen position with enhanced sensitivity
-    // This is a simple linear mapping - could be improved for accuracy
-    const gazeX = screenWidth * (calibratedX / faceWidth) * (this.sensitivity / 10);
-    const gazeY = screenHeight * (calibratedY / faceHeight) * (this.sensitivity / 10);
+    // Calculate screen position with enhanced sensitivity and improved mapping
+    const sensitivityFactor = this.sensitivity / 5; // Ajusté pour une meilleure sensibilité
+    const gazeX = screenWidth * (calibratedX / faceWidth) * sensitivityFactor;
+    const gazeY = screenHeight * (calibratedY / faceHeight) * sensitivityFactor;
     
-    // Apply smoothing for more natural movement
-    const smoothedX = this.lastGazePoint.x * (1 - this.smoothingFactor) + gazeX * this.smoothingFactor;
-    const smoothedY = this.lastGazePoint.y * (1 - this.smoothingFactor) + gazeY * this.smoothingFactor;
+    // Apply smoothing for more natural movement with adjustable smoothing factor
+    const smoothingFactor = Math.min(0.3, Math.max(0.05, this.smoothingFactor));
+    const smoothedX = this.lastGazePoint.x * (1 - smoothingFactor) + gazeX * smoothingFactor;
+    const smoothedY = this.lastGazePoint.y * (1 - smoothingFactor) + gazeY * smoothingFactor;
     
     // Update last gaze point
     this.lastGazePoint = { x: smoothedX, y: smoothedY };

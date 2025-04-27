@@ -1,3 +1,4 @@
+
 export interface CameraState {
   isInitialized: boolean;
   stream: MediaStream | null;
@@ -24,7 +25,7 @@ export class CameraManager {
   async initialize(force: boolean = false): Promise<boolean> {
     // Prevent too many rapid init attempts
     const now = Date.now();
-    if (now - this.lastInitAttempt < 500 && !force) {
+    if (now - this.lastInitAttempt < 300 && !force) { // Réduit pour être plus réactif
       return this.state.isInitialized;
     }
     
@@ -45,7 +46,7 @@ export class CameraManager {
       // Check if current stream is active before replacing
       if (this.state.stream) {
         const tracks = this.state.stream.getTracks();
-        const hasActiveVideoTrack = tracks.some(track => track.kind === 'video' && track.enabled);
+        const hasActiveVideoTrack = tracks.some(track => track.kind === 'video' && track.enabled && !track.muted);
         
         // If we have an active video track and not forcing re-init, just return success
         if (hasActiveVideoTrack && !force) {
@@ -60,16 +61,28 @@ export class CameraManager {
         this.state.stream = null;
       }
 
-      // Get new stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: { ideal: 640, min: 320 },
-          height: { ideal: 480, min: 240 }, 
-          facingMode: "user",
-          frameRate: { ideal: 30, min: 20 }  
-        },
-        audio: false
-      });
+      // Get new stream with retry mechanism
+      let stream = null;
+      let attempts = 0;
+      const maxAttempts = 2;
+      
+      while (!stream && attempts < maxAttempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              width: { ideal: 640, min: 320 },
+              height: { ideal: 480, min: 240 }, 
+              facingMode: "user",
+              frameRate: { ideal: 30, min: 20 }  
+            },
+            audio: false
+          });
+        } catch (e) {
+          attempts++;
+          if (attempts >= maxAttempts) throw e;
+          await new Promise(resolve => setTimeout(resolve, 200)); // Short pause before retry
+        }
+      }
 
       this.state.stream = stream;
       this.video.srcObject = stream;

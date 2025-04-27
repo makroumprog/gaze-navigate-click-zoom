@@ -1,4 +1,3 @@
-
 // UI Components for GazeTech
 
 interface UIElements {
@@ -126,6 +125,9 @@ export class GazeTechUI {
     document.body.appendChild(this.elements.debugIndicator);
     document.body.appendChild(this.elements.statusIndicator);
 
+    // Assurez-vous que le curseur est visible par défaut
+    this.showCursor(true);
+    
     this.updateDebugVisibility();
   }
 
@@ -148,20 +150,18 @@ export class GazeTechUI {
     }
   }
 
-  // Added showCursor method to control cursor visibility
+  // Méthode showCursor corrigée pour fonctionner correctement
   showCursor(visible: boolean) {
     if (this.elements.cursor) {
       this.elements.cursor.style.opacity = visible ? '1' : '0';
+      this.elements.cursor.style.display = visible ? 'block' : 'none';
       console.log('Cursor visibility set to:', visible);
     }
   }
 
-  toggleCursorVisibility(visible: boolean) {
-    if (this.elements.cursor) {
-      this.elements.cursor.style.opacity = visible ? '1' : '0';
-      console.log('Cursor visibility set to:', visible);
-    }
-  }
+  // Suppression de la méthode dupliquée toggleCursorVisibility pour éviter la confusion
+  // et remplacement par une référence à showCursor
+  toggleCursorVisibility = this.showCursor;
 
   updateStatusIndicator(active: boolean) {
     if (this.elements.statusIndicator) {

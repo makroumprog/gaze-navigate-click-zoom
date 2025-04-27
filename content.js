@@ -1,3 +1,4 @@
+
 import { GazeTechController } from './modules/GazeTechController';
 
 let gazeTech: GazeTechController | null = null;
@@ -67,7 +68,7 @@ async function initialize() {
   }
 }
 
-// New heartbeat function to maintain connection with background script
+// Heartbeat function with improved frequency for better persistence
 function startHeartbeat() {
   setInterval(() => {
     if (gazeTech) {
@@ -77,7 +78,7 @@ function startHeartbeat() {
         tabUrl: window.location.href
       }).catch(() => {});
     }
-  }, 2000);
+  }, 1000); // Plus fréquent (toutes les 1 seconde)
 }
 
 // Message handler
@@ -118,8 +119,9 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
       break;
       
     case 'tabBlur':
-      // Important: Don't deactivate tracking on blur to keep it running when popup closes
+      // Important: Ne désactivez PAS le suivi sur blur pour qu'il continue de fonctionner quand la popup se ferme
       if (gazeTech) {
+        // Continuer le suivi même quand le popup est fermé
         gazeTech.setActive(true);
       }
       sendResponse({ success: true });
@@ -127,6 +129,7 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
       
     case 'toggleExtension':
       if (gazeTech) {
+        // Pour le toggle, nous respectons l'état demandé mais on assure que c'est toujours actif si non spécifié
         gazeTech.setActive(request.isActive !== false);
       }
       sendResponse({ success: true });
@@ -137,16 +140,18 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
   }
 }
 
-// Visibility change handler
+// Visibility change handler with improved activation
 function handleVisibilityChange() {
   if (!document.hidden && gazeTech) {
+    console.log("Document became visible, activating eye tracking");
     gazeTech.restoreCamera(true);
     gazeTech.setActive(true);
   }
 }
 
-// Window focus handlers
+// Window focus handlers with improved activation
 function handleWindowFocus() {
+  console.log("Window focus gained, activating eye tracking");
   if (gazeTech) {
     gazeTech.restoreCamera(true);
     gazeTech.setActive(true);
@@ -159,7 +164,7 @@ function handleWindowFocus() {
 
 function handleWindowBlur() {
   chrome.runtime.sendMessage({ action: 'tabBlurred' }).catch(() => {});
-  // Important: Don't deactivate on blur to keep tracking working when popup closes
+  // Important: Ne désactivez PAS sur blur pour que le suivi continue de fonctionner quand la popup se ferme
 }
 
 // Initialize if document is ready

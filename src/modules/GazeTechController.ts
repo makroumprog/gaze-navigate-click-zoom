@@ -61,6 +61,9 @@ export class GazeTechController {
     
     // Start camera persistence check
     this.startPersistenceCheck();
+    
+    // Assurer que le curseur est visible au démarrage
+    this.ui.showCursor(this.isActive);
   }
 
   private handleCameraStateChange(state: CameraState) {
@@ -88,7 +91,7 @@ export class GazeTechController {
         if (this.isActive) {
           this.ui.updateCursorPosition(trackingResult.gazePoint.x, trackingResult.gazePoint.y);
           this.ui.updateStatusIndicator(true);
-          this.ui.showCursor(true); // Ensure cursor is visible during tracking
+          this.ui.showCursor(true); // Assurer que le curseur est visible pendant le suivi
         }
       } else {
         this.ui.updateStatusIndicator(false);
@@ -101,7 +104,7 @@ export class GazeTechController {
     requestAnimationFrame(this.startTracking.bind(this));
   }
 
-  // New method to maintain camera and tracking state persistently
+  // Méthode améliorée pour maintenir la caméra et le suivi persistants
   private startPersistenceCheck() {
     // Clear any existing interval
     if (this.persistenceInterval !== null) {
@@ -114,7 +117,7 @@ export class GazeTechController {
         this.restoreCamera(true);
         this.ui.showCursor(true);
       }
-    }, 1000) as any;
+    }, 500) as any; // Plus fréquent pour une meilleure réactivité
     
     // Also add visibility change listener for more reliable restoration
     document.addEventListener('visibilitychange', () => {
@@ -138,13 +141,16 @@ export class GazeTechController {
   public updateCalibrationData(calibrationData: any) {
     this.eyeTracker.updateCalibrationData(calibrationData);
     console.log('Calibration data updated:', calibrationData);
+    
+    // Assurez-vous que le suivi est actif après la mise à jour de la calibration
+    this.setActive(true);
   }
   
   public setActive(active: boolean) {
     console.log('GazeTech tracking active state:', active);
     this.isActive = active;
     this.eyeTracker.setActive(active);
-    this.ui.toggleCursorVisibility(active);
+    this.ui.showCursor(active);
     
     if (active) {
       // Ensure camera is running when activated
