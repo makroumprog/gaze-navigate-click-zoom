@@ -46,10 +46,10 @@ async function initialize() {
       return true;
     });
 
-    // Add visibility change listener
+    // Add visibility change listener for improved persistence
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Add window focus listeners
+    // Add window focus listeners for better persistence
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('blur', handleWindowBlur);
     
@@ -78,7 +78,7 @@ function startHeartbeat() {
         tabUrl: window.location.href
       }).catch(() => {});
     }
-  }, 500); // More frequent (every 500ms)
+  }, 300); // More frequent (every 300ms) for better responsiveness
 }
 
 // Message handler
@@ -97,7 +97,7 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
         }
         
         // Force camera to stay active after popup closes
-        if (request.keepCameraActive) {
+        if (request.keepCameraActive !== false) {
           forceKeepCameraActive = true;
           console.log('Camera set to stay active after popup closes');
         }
@@ -116,7 +116,7 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
       break;
       
     case 'stopCamera':
-      // New handler to stop the camera explicitly
+      // Handler to stop the camera explicitly
       if (gazeTech) {
         gazeTech.setActive(false);
         gazeTech.cleanup();
@@ -152,7 +152,12 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
     case 'toggleExtension':
       if (gazeTech) {
         // For toggle, we respect the requested state but ensure it's always active if not specified
-        gazeTech.setActive(request.isActive !== false);
+        const shouldBeActive = request.isActive !== false;
+        gazeTech.setActive(shouldBeActive);
+        // Only update forceKeepCameraActive if explicitly turning off the extension
+        if (request.isActive === false) {
+          forceKeepCameraActive = false;
+        }
       }
       sendResponse({ success: true });
       break;
@@ -177,8 +182,10 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
           }
         }
         
-        // Update force keep camera flag
-        forceKeepCameraActive = request.settings.cameraActive !== false;
+        // Only update forceKeepCameraActive if explicitly set to false
+        if (request.settings.cameraActive === false) {
+          forceKeepCameraActive = false;
+        }
       }
       sendResponse({ success: true });
       break;

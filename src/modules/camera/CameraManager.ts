@@ -23,9 +23,9 @@ export class CameraManager {
   }
 
   async initialize(force: boolean = false): Promise<boolean> {
-    // Prevent too many rapid init attempts
+    // Prevent too many rapid init attempts with shorter timeout
     const now = Date.now();
-    if (now - this.lastInitAttempt < 300 && !force) { // Réduit pour être plus réactif
+    if (now - this.lastInitAttempt < 250 && !force) { // Reduced for better responsiveness
       return this.state.isInitialized;
     }
     
@@ -61,10 +61,10 @@ export class CameraManager {
         this.state.stream = null;
       }
 
-      // Get new stream with retry mechanism
+      // Get new stream with enhanced retry mechanism
       let stream = null;
       let attempts = 0;
-      const maxAttempts = 2;
+      const maxAttempts = 3; // Increased for better reliability
       
       while (!stream && attempts < maxAttempts) {
         try {
@@ -80,7 +80,8 @@ export class CameraManager {
         } catch (e) {
           attempts++;
           if (attempts >= maxAttempts) throw e;
-          await new Promise(resolve => setTimeout(resolve, 200)); // Short pause before retry
+          // Use increasing delays between retries for better reliability
+          await new Promise(resolve => setTimeout(resolve, 200 * attempts)); 
         }
       }
 

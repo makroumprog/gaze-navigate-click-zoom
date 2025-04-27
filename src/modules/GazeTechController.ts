@@ -59,7 +59,7 @@ export class GazeTechController {
     // Start tracking loop
     this.startTracking();
     
-    // Start camera persistence check
+    // Start camera persistence check with more frequent intervals
     this.startPersistenceCheck();
     
     // Make sure the cursor is visible at startup
@@ -104,22 +104,22 @@ export class GazeTechController {
     requestAnimationFrame(this.startTracking.bind(this));
   }
 
-  // Improved method to maintain camera and tracking persistence
+  // Improved method to maintain camera and tracking persistence with more frequent checks
   private startPersistenceCheck() {
     // Clear any existing interval
     if (this.persistenceInterval !== null) {
       clearInterval(this.persistenceInterval);
     }
     
-    // Set up interval to check and maintain camera connection
+    // Set up interval to check and maintain camera connection more frequently
     this.persistenceInterval = window.setInterval(() => {
       if (this.isActive) {
         this.restoreCamera(true);
         this.ui.showCursor(true);
       }
-    }, 300) as any; // More frequent for better responsiveness
+    }, 200) as any; // More frequent for better responsiveness
     
-    // Also add visibility change listener for more reliable restoration
+    // Add visibility change listener for more reliable restoration
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && this.isActive) {
         this.restoreCamera(true);

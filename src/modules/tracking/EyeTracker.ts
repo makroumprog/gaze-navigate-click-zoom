@@ -61,14 +61,14 @@ export class EyeTracker {
     let calibratedY = irisY;
     
     if (this.calibrationData) {
-      // Improved calibration application
+      // Improved calibration application with better sensitivity
       try {
         // Apply any calibration transformation
         const centerPoint = this.calibrationData[0]; // Center calibration point
         if (centerPoint && centerPoint.eyeData) {
-          // Calculate adjustment based on center calibration with sensitivity factor
-          const offsetX = (centerPoint.eyeData.x - irisX) * 1.5; // Enhanced amplification factor
-          const offsetY = (centerPoint.eyeData.y - irisY) * 1.5; // Enhanced amplification factor
+          // Calculate adjustment based on center calibration with enhanced sensitivity factor
+          const offsetX = (centerPoint.eyeData.x - irisX) * 1.8; // Further enhanced amplification factor
+          const offsetY = (centerPoint.eyeData.y - irisY) * 1.8; // Further enhanced amplification factor
           calibratedX = irisX + offsetX;
           calibratedY = irisY + offsetY;
         }
@@ -86,7 +86,7 @@ export class EyeTracker {
     const faceHeight = faceData.boundingBox.bottomRight[1] - faceData.boundingBox.topLeft[1];
     
     // Calculate screen position with enhanced sensitivity and improved mapping
-    const sensitivityFactor = this.sensitivity / 4; // Better sensitivity adjustment
+    const sensitivityFactor = this.sensitivity / 3.5; // Better sensitivity adjustment
     const gazeX = screenWidth * (calibratedX / faceWidth) * sensitivityFactor;
     const gazeY = screenHeight * (calibratedY / faceHeight) * sensitivityFactor;
     

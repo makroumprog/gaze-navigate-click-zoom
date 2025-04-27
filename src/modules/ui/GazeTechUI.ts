@@ -151,7 +151,7 @@ export class GazeTechUI {
     }
   }
 
-  // Fixed showCursor method to properly handle cursor visibility
+  // Implementation of showCursor method to properly handle cursor visibility
   showCursor(visible: boolean) {
     if (this.elements.cursor) {
       this.elements.cursor.style.opacity = visible ? '1' : '0';
@@ -159,10 +159,6 @@ export class GazeTechUI {
       console.log('Cursor visibility set to:', visible);
     }
   }
-
-  // Remove duplicate toggleCursorVisibility method to avoid confusion
-  // and replace with a reference to showCursor
-  toggleCursorVisibility = this.showCursor;
 
   updateStatusIndicator(active: boolean) {
     if (this.elements.statusIndicator) {
