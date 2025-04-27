@@ -149,6 +149,14 @@ export class GazeTechUI {
     }
   }
 
+  // Nouvelle méthode pour afficher/masquer le curseur
+  toggleCursorVisibility(visible: boolean) {
+    if (this.elements.cursor) {
+      this.elements.cursor.style.opacity = visible ? '1' : '0';
+      console.log('Cursor visibility set to:', visible);
+    }
+  }
+
   updateStatusIndicator(active: boolean) {
     if (this.elements.statusIndicator) {
       this.elements.statusIndicator.style.backgroundColor = active ? 'lime' : 'red';

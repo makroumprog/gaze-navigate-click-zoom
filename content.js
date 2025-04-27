@@ -1,4 +1,3 @@
-
 import { GazeTechController } from './modules/GazeTechController';
 
 let gazeTech: GazeTechController | null = null;
@@ -50,21 +49,42 @@ async function initialize() {
 
 // Message handler
 function handleChromeMessage(request: any, sender: any, sendResponse: Function) {
+  console.log('Message received in content.js:', request.action);
+  
   switch (request.action) {
     case 'startEyeTracking':
       if (gazeTech) {
+        // Ensure eye tracking is active and activate with the received calibration data
         gazeTech.restoreCamera(true);
+        
+        // Update settings if provided
+        if (request.calibrationData) {
+          gazeTech.updateCalibrationData(request.calibrationData);
+        }
+        
+        // Ensure tracking is active
+        gazeTech.setActive(true);
+        
+        console.log('Eye tracking activated with calibration data');
       }
       sendResponse({ success: true });
       break;
       
     case 'tabFocus':
-    case 'tabBlur':
     case 'forceActivateCamera':
     case 'syncCameraState':
     case 'maintainCamera':
       if (gazeTech) {
         gazeTech.restoreCamera(true);
+        gazeTech.setActive(true);
+      }
+      sendResponse({ success: true });
+      break;
+      
+    case 'tabBlur':
+      if (gazeTech) {
+        // Don't deactivate on blur to keep tracking when popup closes
+        gazeTech.setActive(true);
       }
       sendResponse({ success: true });
       break;
@@ -78,6 +98,7 @@ function handleChromeMessage(request: any, sender: any, sendResponse: Function) 
 function handleVisibilityChange() {
   if (!document.hidden && gazeTech) {
     gazeTech.restoreCamera(true);
+    gazeTech.setActive(true);
   }
 }
 
@@ -85,6 +106,7 @@ function handleVisibilityChange() {
 function handleWindowFocus() {
   if (gazeTech) {
     gazeTech.restoreCamera(true);
+    gazeTech.setActive(true);
   }
   chrome.runtime.sendMessage({ action: 'tabFocused' }).catch(() => {});
 }

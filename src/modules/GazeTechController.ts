@@ -97,6 +97,19 @@ export class GazeTechController {
   public async restoreCamera(force: boolean = false) {
     return this.cameraManager.initialize(force);
   }
+  
+  // Nouvelle méthode pour mettre à jour les données de calibration
+  public updateCalibrationData(calibrationData: any) {
+    this.eyeTracker.updateCalibrationData(calibrationData);
+    console.log('Calibration data updated:', calibrationData);
+  }
+  
+  // Nouvelle méthode pour activer/désactiver le suivi
+  public setActive(active: boolean) {
+    console.log('GazeTech tracking active state:', active);
+    this.isActive = active;
+    this.ui.toggleCursorVisibility(active);
+  }
 
   public cleanup() {
     this.isActive = false;

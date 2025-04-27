@@ -4,93 +4,87 @@ export interface GazePoint {
   y: number;
 }
 
-export interface EyeState {
-  isBlinking: boolean;
-  lastBlinkTime: number;
-}
-
-export interface TrackingSettings {
+export interface EyeTrackerSettings {
   sensitivity: number;
   smoothingFactor: number;
   calibrationData?: any;
 }
 
 export class EyeTracker {
+  private sensitivity: number;
+  private smoothingFactor: number;
+  private calibrationData: any;
   private lastGazePoint: GazePoint = { x: 0, y: 0 };
-  private settings: TrackingSettings;
-
-  constructor(settings: TrackingSettings) {
-    this.settings = settings;
+  
+  constructor(settings: EyeTrackerSettings) {
+    this.sensitivity = settings.sensitivity;
+    this.smoothingFactor = settings.smoothingFactor;
+    this.calibrationData = settings.calibrationData;
   }
-
-  processEyeData(face: any): { gazePoint: GazePoint; isBlinking: boolean; confidence: number } {
-    const landmarks = face.scaledMesh;
+  
+  public updateCalibrationData(calibrationData: any) {
+    this.calibrationData = calibrationData;
+  }
+  
+  processEyeData(faceData: any) {
+    // Extract iris positions from face mesh (landmarks 468 and 473)
+    const mesh = faceData.scaledMesh;
     
-    // Calculate eye landmarks
-    const rightEyeUpper = landmarks[159];
-    const rightEyeLower = landmarks[145];
-    const leftEyeUpper = landmarks[386];
-    const leftEyeLower = landmarks[374];
-    const rightIris = landmarks[473];
-    const leftIris = landmarks[468];
+    // Use left and right iris centers (specific indices in the face mesh)
+    const leftIris = mesh[468]; // Left iris center
+    const rightIris = mesh[473]; // Right iris center
     
-    // Calculate face width for normalization
-    const faceWidth = Math.sqrt(
-      Math.pow(landmarks[454][0] - landmarks[234][0], 2) +
-      Math.pow(landmarks[454][1] - landmarks[234][1], 2)
-    );
-    
-    // Calculate eye openness
-    const rightEyeHeight = Math.abs(rightEyeUpper[1] - rightEyeLower[1]) / faceWidth;
-    const leftEyeHeight = Math.abs(leftEyeUpper[1] - leftEyeLower[1]) / faceWidth;
-    const eyeOpenness = (rightEyeHeight + leftEyeHeight) / 2;
-    
-    // Blink detection
-    const blinkThreshold = 0.012 - (0.0005 * (this.settings.sensitivity - 5));
-    const isBlinking = eyeOpenness < blinkThreshold;
-    
-    // Calculate gaze point
-    const irisX = (rightIris[0] + leftIris[0]) / 2;
-    const irisY = (rightIris[1] + leftIris[1]) / 2;
-    
-    // Apply sensitivity and calibration
-    const sensitivityFactor = Math.pow(this.settings.sensitivity / 5, 2.0);
-    let calibratedX = (irisX - window.innerWidth / 2) * sensitivityFactor;
-    let calibratedY = (irisY - window.innerHeight / 2) * sensitivityFactor;
+    // Average the iris positions to get eye gaze direction
+    const irisX = (leftIris[0] + rightIris[0]) / 2;
+    const irisY = (leftIris[1] + rightIris[1]) / 2;
     
     // Apply calibration if available
-    if (this.settings.calibrationData) {
-      // Apply calibration offsets
-      calibratedX += this.settings.calibrationData.offsetX || 0;
-      calibratedY += this.settings.calibrationData.offsetY || 0;
+    let calibratedX = irisX;
+    let calibratedY = irisY;
+    
+    if (this.calibrationData) {
+      // Simple calibration adjustment (real implementation would be more sophisticated)
+      // This is a placeholder - in a real system we'd use the calibration points
+      // to create a mapping function
+      try {
+        // Apply any calibration transformation
+        const centerPoint = this.calibrationData[0]; // Center calibration point
+        if (centerPoint && centerPoint.eyeData) {
+          // Calculate adjustment based on center calibration
+          const offsetX = centerPoint.eyeData.x - irisX;
+          const offsetY = centerPoint.eyeData.y - irisY;
+          calibratedX = irisX + offsetX;
+          calibratedY = irisY + offsetY;
+        }
+      } catch (e) {
+        console.error('Error applying calibration data:', e);
+      }
     }
     
-    // Calculate screen coordinates
-    const screenX = window.innerWidth * (0.5 + Math.pow(calibratedX / window.innerWidth, 7) * 0.009);
-    const screenY = window.innerHeight * (0.5 + Math.pow(calibratedY / window.innerHeight, 7) * 0.009);
+    // Map the iris position to screen coordinates
+    // The mapping depends on the face position and size
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
     
-    // Apply smoothing
-    const smoothedX = this.lastGazePoint.x * this.settings.smoothingFactor + 
-                     screenX * (1 - this.settings.smoothingFactor);
-    const smoothedY = this.lastGazePoint.y * this.settings.smoothingFactor + 
-                     screenY * (1 - this.settings.smoothingFactor);
+    // Use bounding box to normalize coordinates
+    const faceWidth = faceData.boundingBox.bottomRight[0] - faceData.boundingBox.topLeft[0];
+    const faceHeight = faceData.boundingBox.bottomRight[1] - faceData.boundingBox.topLeft[1];
     
-    // Constrain to screen bounds
-    const gazePoint = {
-      x: Math.max(10, Math.min(window.innerWidth - 10, smoothedX)),
-      y: Math.max(10, Math.min(window.innerHeight - 10, smoothedY))
-    };
+    // Calculate screen position with enhanced sensitivity
+    // This is a simple linear mapping - could be improved for accuracy
+    const gazeX = screenWidth * (calibratedX / faceWidth) * (this.sensitivity / 10);
+    const gazeY = screenHeight * (calibratedY / faceHeight) * (this.sensitivity / 10);
+    
+    // Apply smoothing for more natural movement
+    const smoothedX = this.lastGazePoint.x * (1 - this.smoothingFactor) + gazeX * this.smoothingFactor;
+    const smoothedY = this.lastGazePoint.y * (1 - this.smoothingFactor) + gazeY * this.smoothingFactor;
     
     // Update last gaze point
-    this.lastGazePoint = gazePoint;
-    
-    // Calculate confidence based on face visibility
-    const confidence = Math.min(1, faceWidth / (window.innerWidth * 0.4));
+    this.lastGazePoint = { x: smoothedX, y: smoothedY };
     
     return {
-      gazePoint,
-      isBlinking,
-      confidence
+      gazePoint: this.lastGazePoint,
+      rawPoint: { x: gazeX, y: gazeY }
     };
   }
 }
