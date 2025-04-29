@@ -151,7 +151,7 @@ export class GazeTechUI {
     }
   }
 
-  // Implementation of showCursor method to properly handle cursor visibility
+  // Enhanced showCursor method to properly handle cursor visibility
   showCursor(visible: boolean) {
     if (this.elements.cursor) {
       this.elements.cursor.style.opacity = visible ? '1' : '0';

@@ -46,7 +46,7 @@ export class GazeTechController {
       this.handleCameraStateChange.bind(this)
     );
 
-    // Load face mesh model
+    // Load face mesh model with refined parameters for better tracking
     if (window.facemesh) {
       this.faceMesh = await window.facemesh.load({
         maxFaces: 1,
@@ -64,6 +64,9 @@ export class GazeTechController {
     
     // Make sure the cursor is visible at startup
     this.ui.showCursor(this.isActive);
+    
+    // Ensure the camera is initialized
+    await this.restoreCamera(true);
   }
 
   private handleCameraStateChange(state: CameraState) {
